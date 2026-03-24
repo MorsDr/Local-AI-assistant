@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.log
+main_model_ollama/
+generator_model_comfy/
+generator_model_comfy/.venv/
+scripts/.venv/
+*.swp
+.DS_Store
