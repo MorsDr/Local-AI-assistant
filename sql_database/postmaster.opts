@@ -1,1 +1,0 @@
-/usr/bin/postgres "-D" "/mnt/data/ai_helper/sql_database"

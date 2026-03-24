@@ -9,3 +9,4 @@ generator_model_comfy/.venv/
 scripts/.venv/
 *.swp
 .DS_Store
+sql_database/

@@ -4,11 +4,16 @@ from pgvector.psycopg2 import register_vector
 import requests
 import json
 import re
+from pathlib import Path
 
 DB_CONFIG = "postgresql://ai_archive:556445gghffg@localhost:5432/rag_base"
-DOCS_DIR = "./docs"
 EMBED_MODEL = "nomic-embed-text"
 
+script_dir=Path(__file__).resolve().parent.parent
+DOCS_DIR=script_dir / "Docs"
+
+if not DOCS_DIR.exists:
+    print(f"Директория {DOCS_DIR} не найдена!")
 
 def get_embedding(text):
     try:
@@ -46,12 +51,12 @@ def chunk_text(text, chunk_size=1000, overlap=2):
             current_length+=len(sentence)
         else:
             chunks.append(" ".join(current_chunk))
-	    current_chunk=current_chunk[-overlap:]
-	    current_chunk.append(sentence)
-	    current_length=sum(len(s) for s in current_chunk)
+            current_chunk=current_chunk[-overlap:]
+            current_chunk.append(sentence)
+            current_length=sum(len(s) for s in current_chunk)
     if current_chunk:
-	chunks.append(" ".join(current_chunk))
-return chunks
+        chunks.append(" ".join(current_chunk))
+    return chunks
 
 
 def process_files():
@@ -63,7 +68,7 @@ def process_files():
         cur = conn.cursor()
 
         for filename in os.listdir(DOCS_DIR):
-            if filename.endswitch((".md",".txt")):
+            if filename.endswith((".md",".txt")):
                 continue
 
             path = os.path.join(DOCS_DIR, filename)

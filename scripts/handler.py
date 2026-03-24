@@ -112,26 +112,38 @@ async def main_loop():
 
                 print("[*] Данные получены, формирую финальный ответ...")
 
-                final_prompt = f"""
-Контент страницы {url}:
-
-{web_content}
-
-На основе этих данных ответь на вопрос пользователя:
-
-{user_input}
-"""
+                final_prompt = f"""Контент страницы {url}:{web_content}
+		На основе этих данных ответь на вопрос пользователя:
+		{user_input}"""
 
                 thought, final_answer = ask_deepseek(final_prompt)
 
                 print(f"\n[ОТВЕТ]\n{final_answer}")
 
             except Exception as e:
-
                 print(f"[Ошибка браузера]: {e}")
 
         else:
+            print(f"\n[ОТВЕТ]\n{answer}")
 
+        if "[DOCS:" in answer:
+            try:
+                match=re.search(r"\[DOCS:<(.*?)>\]", answer)
+                if match:
+                    query_text=match.group(1)
+                    print(f"Запрос к БД с темой: {query_text}")
+                    DB_answer=docs_search(query_text)
+                    print("Данные получены формирую финальный ответ")
+
+                    final_prompt = f"""Контент по запросу: {query_text}, найденый в БД документаций {DB_answer}.
+                    На основе этих данных сформируй финальный ответ на вопрос пользователя {user_input}"""
+
+                    thought, final_answer=ask_deepseek(final_prompt)
+                    print(f"\n[ОТВЕТ]\n{final_answer}")
+
+            except Exception as e:
+                print(f"Ошибка БД: {e}")
+        else:
             print(f"\n[ОТВЕТ]\n{answer}")
 
 

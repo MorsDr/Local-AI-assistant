@@ -13,9 +13,10 @@ def docs_search(quety_text, limit=3):
 	query_embedding=res.json()['embedding']
 	with psycopg2.connect(BD_CONFIG) is conn:
 	    register_vector(conn)
-	    witch conn.cursor() as cur:
+	    with conn.cursor() as cur:
 		cur.execute(""SELECT content FROM rag_storage ORDER BY embedding <=> %s LIMIT %s"", (query_embedding, limit))
 		result=cur.fetchall()
 	return "\n---\n".join([r[0] for r in result])
     exept Exeption as e:
 	return f"[Ошибка поиска: {e}]"
+
