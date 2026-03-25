@@ -5,6 +5,8 @@ import sys
 from datetime import datetime, timedelta
 import asyncio
 from browser_module import fetch_web_data
+import re
+from rag_access import docs_search
 
 # Конфигурация
 DB_CONFIG = {

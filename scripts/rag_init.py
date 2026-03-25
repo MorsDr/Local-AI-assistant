@@ -5,6 +5,7 @@ import requests
 import json
 import re
 from pathlib import Path
+from bs4 import BeautifulSoup
 
 DB_CONFIG = "postgresql://ai_archive:556445gghffg@localhost:5432/rag_base"
 EMBED_MODEL = "nomic-embed-text"
@@ -17,11 +18,7 @@ if not DOCS_DIR.exists:
 
 def get_embedding(text):
     try:
-        response = requests.post(
-            "http://localhost:11434/api/embeddings",
-            json={"model": EMBED_MODEL, "prompt": text},
-            timeout=30
-        )
+        response = requests.post("http://localhost:11434/api/embeddings", json={"model": EMBED_MODEL, "prompt": text}, timeout=30)
 
         response.raise_for_status()
         data = response.json()
@@ -35,12 +32,22 @@ def get_embedding(text):
         print(f"Ошибка embedding: {e}")
         return None
 
+def html_cleaner(raw_text):
+    soup=BeautifulSoup(raw_text, 'lxml')
+    for anchor in soup.find_all("a", class_="headelink"):
+        anchor.decompose()
+    for tag in soup(["script", "style", "nav", "footer", "header"]):
+        tag.decompose()
+    clean_text=soup.get_text(separator=' ')
+    lines=[line.strip() for line in clean_text.splitlines() if line.strip()]
+    return " ".join(lines)
+
 def sentences_split(text):
     sentences=re.split(r'(?<=[.!?])\s+', text)
     return [s.strip() for s in sentences if s.strip()]
 
 
-def chunk_text(text, chunk_size=1000, overlap=2):
+def chunk_text(text, chunk_size=1990, overlap=2):
     sentences=sentences_split(text)
     chunks=[]
     current_chunk=[]
@@ -73,10 +80,7 @@ def process_files():
 
             path = os.path.join(DOCS_DIR, filename)
 
-            cur.execute(
-                "SELECT EXISTS(SELECT 1 FROM rag_storage WHERE metadata->>'file'=%s",
-                (filename,)
-            )
+            cur.execute("SELECT EXISTS(SELECT 1 FROM rag_storage WHERE metadata->>'file'=%s)",(filename,))
 
             if cur.fetchone()[0] > 0:
                 print(f"Пропуск {filename} (уже есть)")
@@ -88,21 +92,19 @@ def process_files():
             with open(path, "r", encoding="utf-8") as f:
                 text = f.read()
 
+            if filename.endswith(".html"):
+                text=html_cleaner(text)
+
             chunks = chunk_text(text)
 
             for chunk in chunks:
+                print(f"Чанк длинной {len(chunk)}")
                 embedding = get_embedding(chunk)
 
                 if embedding is None:
                     continue
 
-                cur.execute(
-                    """
-                    INSERT INTO rag_storage.documents (content, embedding, metadata)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (chunk, embedding, json.dumps({"file": filename}))
-                )
+                cur.execute("""INSERT INTO rag_storage (content, embedding, metadata) VALUES (%s, %s, %s)""",(chunk, embedding, json.dumps({"file": filename})))
 
             conn.commit()  # коммит после каждого файла
 
