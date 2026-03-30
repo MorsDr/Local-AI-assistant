@@ -5,7 +5,7 @@ import requests
 import json
 import re
 from pathlib import Path
-from bs4 import BeautifulSoup
+from utils import html_cleaner
 
 DB_CONFIG = "postgresql://ai_archive:556445gghffg@localhost:5432/rag_base"
 EMBED_MODEL = "nomic-embed-text"
@@ -32,15 +32,6 @@ def get_embedding(text):
         print(f"Ошибка embedding: {e}")
         return None
 
-def html_cleaner(raw_text):
-    soup=BeautifulSoup(raw_text, 'lxml')
-    for anchor in soup.find_all("a", class_="headelink"):
-        anchor.decompose()
-    for tag in soup(["script", "style", "nav", "footer", "header"]):
-        tag.decompose()
-    clean_text=soup.get_text(separator=' ')
-    lines=[line.strip() for line in clean_text.splitlines() if line.strip()]
-    return " ".join(lines)
 
 def sentences_split(text):
     sentences=re.split(r'(?<=[.!?])\s+', text)
