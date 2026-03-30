@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 import asyncio
-from browser_module import fetch_web_data
+from browser_module import browser_answer
 import re
 from rag_access import docs_search
 
@@ -51,7 +51,7 @@ def ask_deepseek(user_input, target_file=None):
     
     payload = {
         "model": "Archangel",
-        "prompt": user_input,
+        "prompt": ful_prompt,
         "stream": False
     }
     
@@ -106,23 +106,13 @@ async def main_loop():
 
             try:
 
-                url = answer.split("[SEARCH:")[1].split("]")[0].strip()
+                query = answer.split("[SEARCH:")[1].split("]")[0].strip()
 
-                print(f"\n[*] Модель запросила поиск: {url}")
-
-                web_content = await fetch_web_data(url)
-
-                print("[*] Данные получены, формирую финальный ответ...")
-
-                final_prompt = f"""Контент страницы {url}:{web_content}
-		На основе этих данных ответь на вопрос пользователя:
-		{user_input}"""
-
-                thought, final_answer = ask_deepseek(final_prompt)
-
-                print(f"\n[ОТВЕТ]\n{final_answer}")
+                print(f"\n[*] Модель запросила поиск: {query}")
+                print(f"\nОтвет:\n{browser_answer(query)}")
 
             except Exception as e:
+
                 print(f"[Ошибка браузера]: {e}")
 
         else:

@@ -6,6 +6,7 @@ __pycache__/
 main_model_ollama/
 generator_model_comfy/
 generator_model_comfy/.venv/
+ollama_home/
 scripts/.venv/
 *.swp
 .DS_Store

@@ -1,6 +1,7 @@
+import random
 import asyncio
 import json
-from utils import html_cleaner, browser_config
+from utils import html_cleaner, browser_config, appeal_to_ollama
 from duckduckgo_search import DDGS
 import aiohttp
 
@@ -34,6 +35,14 @@ def split_links(links, n_agents):
     chunk_size=len(links)//n_agents
     return [links[i:i+chunk_size] for i in range(0,len(links), chunk_size)]
 
+async def extract_revelant(text, query):
+    prompt=f"""Extract only useful information for the query.
+               Query:
+               {query}
+               Text:
+               {text[:4000]}"""
+    return await appeal_to_ollama(prompt)
+
 async def agent_worker(name, links, query, session):
     result=[]
     for url in links:
@@ -52,10 +61,14 @@ async def run_agents(links, query, config):
         task=[agent_worker(f"agent_{i+1}", chunk, query, session) for i, chunk in enumerate(split)]
         return await asyncio.gather(*task)
 
-def main_loop():
+def browser_answer(query):
     config=browser_config()
     links=await search(query)
     ranked=rank_links(links,config)
     agent_result=await run_agents(query, config, ranked)
-    context
-print()
+    context="/n/n".join(agent_result)
+    final_prompt=f"""Answer the question using the context below.
+                     {context}
+                     Question:
+                     {query}"""
+    return appeal_to_ollama(final_prompt)

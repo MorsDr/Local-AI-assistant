@@ -20,3 +20,9 @@ def browser_config():
         print(f"Ошибка структуры файла конфинурации: {config_path.name} в строке: {e.lineno}")
     except Exception as e:
         print(f"Ошибка загрузки конфиг-файла: {e}")
+
+async def appeal_to_ollama(full_prompt):
+    async with aiohttp.ClientSession() as session:
+        async with session.post("http://;ocalhost:11434/api/generate", json={"model":"archangel", "prompt":full_prompt, "stream":False}) as r:
+            data=await r.json()
+            return data.get("response","")
