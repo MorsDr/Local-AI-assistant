@@ -10,9 +10,9 @@ from rag_access import docs_search
 
 # Конфигурация
 DB_CONFIG = {
-    "dbname": "ai_system",
-    "user": "ai_manager",
-    "password": "556645gghhfg", # Замени на свой
+    "dbname": "dialog_log",
+    "user": "logging",
+    "password": "12345", # Замени на свой
     "host": "localhost"
 }
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -32,7 +32,7 @@ def log_to_db(prompt, thought, response, file_path=None):
         with psycopg2.connect(**DB_CONFIG) as conn:
             with conn.cursor() as cur:
                 query = """
-                INSERT INTO chat_history (ts, prompt, thought, response, access_count, file_path) 
+                INSERT INTO dialogs (ts, prompt, thought, response, access_count) 
                 VALUES (%s, %s, %s, %s, %s, %s)
                 """
                 cur.execute(query, (datetime.now(), prompt, thought, response, 1, file_path))
@@ -51,7 +51,7 @@ def ask_deepseek(user_input, target_file=None):
     
     payload = {
         "model": "Archangel",
-        "prompt": ful_prompt,
+        "prompt": full_prompt,
         "stream": False
     }
     

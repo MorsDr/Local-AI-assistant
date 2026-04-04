@@ -24,7 +24,7 @@ def classify_url(url:str, config):
                 return category
     return "other"
 
-def rank_list(links:link[str], config) -> list[str]:
+def rank_list(links:list[str], config) -> list[str]:
     def score(url):
         category=classify_url(url,config)
         return config["trust_scores"].get(category,0)
@@ -61,7 +61,7 @@ async def run_agents(links, query, config):
         task=[agent_worker(f"agent_{i+1}", chunk, query, session) for i, chunk in enumerate(split)]
         return await asyncio.gather(*task)
 
-def browser_answer(query):
+async def browser_answer(query):
     config=browser_config()
     links=await search(query)
     ranked=rank_links(links,config)
