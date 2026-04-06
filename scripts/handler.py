@@ -33,9 +33,9 @@ def log_to_db(prompt, thought, response, file_path=None):
             with conn.cursor() as cur:
                 query = """
                 INSERT INTO dialogs (ts, prompt, thought, response, access_count) 
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s)
                 """
-                cur.execute(query, (datetime.now(), prompt, thought, response, 1, file_path))
+                cur.execute(query, (datetime.now(), prompt, thought, response, 1))
     except Exception as e:
         print(f"Ошибка БД: {e}")
 
@@ -109,7 +109,8 @@ async def main_loop():
                 query = answer.split("[SEARCH:")[1].split("]")[0].strip()
 
                 print(f"\n[*] Модель запросила поиск: {query}")
-                print(f"\nОтвет:\n{browser_answer(query)}")
+                result=await browser_answer(query)
+                print(f"\nОтвет:\n{result}")
 
             except Exception as e:
 

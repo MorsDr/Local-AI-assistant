@@ -1,3 +1,4 @@
+from pathlib import Path
 from bs4 import BeautifulSoup
 import json
 
@@ -23,6 +24,7 @@ def browser_config():
 
 async def appeal_to_ollama(full_prompt):
     async with aiohttp.ClientSession() as session:
-        async with session.post("http://;ocalhost:11434/api/generate", json={"model":"archangel", "prompt":full_prompt, "stream":False}) as r:
+        async with session.post("http://localhost:11434/api/generate", json={"model":"archangel", "prompt":full_prompt, "stream":False}) as r:
             data=await r.json()
             return data.get("response","")
+

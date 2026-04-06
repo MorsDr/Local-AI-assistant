@@ -11,6 +11,7 @@
       "developer.mozilla.org"
     ],
     "trusted": [
+      "wikipedia.org",
       "github.com",
       "stackoverflow.com"
     ],
@@ -27,8 +28,8 @@
     "other": 0.4
   },
   "limits": {
-    "max_links": 6,
-    "agents": 3
+    "max_links": 10,
+    "agents": 5
   },
   "user_agents": [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -51,5 +52,16 @@
     "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Vivaldi/6.6.3271.45"
+  ],
+  "block_markers":[
+   "captcha",
+   "cloudflare",
+   "ddos-protection",
+   "robot check",
+   "access denied",
+   "challenge-running",
+   "forbidden",
+   "подтвердите, что вы не робот",
+   "проверка безопасности"
   ]
 }
