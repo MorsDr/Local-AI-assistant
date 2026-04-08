@@ -63,5 +63,16 @@
    "forbidden",
    "подтвердите, что вы не робот",
    "проверка безопасности"
+  ],
+  "excluded_domains":[
+   "youtube.com", "youtu.be",
+   "tiktok.com",
+   "instagram.com",
+   "facebook.com",
+   "vimeo.com",
+   "rutube.ru",
+   "skipvids.com",
+   "hd2k.ru"
+   "vk.com", "vk.ru",
   ]
 }

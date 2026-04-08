@@ -1,9 +1,10 @@
+import aiohttp
 import random
 import asyncio
 import json
 from utils import html_cleaner, browser_config, appeal_to_ollama
 from ddgs import DDGS
-import aiohttp
+from playwright.async_api import async_playwright
 
 def get_random_headers(config):
     return {"User-agent": random.choice(config["user_agents"]),
@@ -25,22 +26,46 @@ def is_blocked(html, markers):
     html_low=html.lower()
     return any(marker.lower() in html_low for marker in markers)
 
-async def search(query):
+async def search(query, config):
     await asyncio.sleep(random.uniform(1,4))
+    excluded=config.get("excluded_domains", [])
     with DDGS() as ddgs:
         results=ddgs.text(query, max_results=20)
-        return [r['href'] for r in results]
+        final_links_list=[]
+        for r in results:
+            url=r['href'].lower()
+            if not any(domain in url for domain in excluded):
+                final_links_list.append(r['href'])
+        return final_links_list
 
 async def fetch_page(session, url):
     try:
         async with session.get(url, timeout=10) as response:
             if response.status == 200:
-                return await response.text()
+                content=await response.read()
+                return content.decode(response.get_encoding() or 'utf-8', errors='ignore')
             else:
                 print(f"Ошибка доступа к {url}: статус {response.status}")
                 return ""
     except Exception as e:
         print(f"Не удалось загрузить {url}:{e}")
+        return ""
+
+async def fetch_page_adv(url,config):
+    print(f"В соответствии с ошибкой доступа к {url} запускаю продвинутый парсинг")
+    try:
+        async with async_playwright() as p:
+            browser=await p.chromium.launch(headless=True)
+            context=await browser.new_context(user_agent=random.choice(config["user_agents"]), viewport={'width':1920, 'height':1080})
+            page=await context.new_page()
+            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            await page.mouse.wheel(0,500)
+            await asyncio.sleep(2)
+            content=await page.content()
+            await browser.close()
+            return content
+    except Exception as e:
+        print(f"Получить доступ к {url} продвинутым парсером не удалось: {e}")
         return ""
 
 def classify_url(url:str, config):
@@ -61,7 +86,7 @@ def split_links(links, n_agents):
     chunk_size=len(links)//n_agents
     return [links[i:i+chunk_size] for i in range(0,len(links), chunk_size)]
 
-async def extract_revelant(text, query):
+async def extract_relevant(text, query):
     prompt=f"""Extract only useful information for the query.
                Query:
                {query}
@@ -75,8 +100,10 @@ async def agent_worker(name, links, query, session, config):
     for url in links:
         await asyncio.sleep(random.uniform(1,3)) 
         html=await fetch_page(session, url)
-        if is_blocked(html, block_markers):
-            continue
+        if not html or is_blocked(html, block_markers):
+            html=await fetch_page_adv(url, config)
+            if not html or is_blocked(html, block_markers):
+                continue
         text=html_cleaner(html)
         summary=await extract_relevant(text, query)
         result.append(summary)
@@ -92,7 +119,7 @@ async def run_agents(links, query, config):
 
 async def browser_answer(query):
     config=browser_config()
-    links=await search(query)
+    links=await search(query, config)
     ranked=rank_list(links,config)
     agent_result=await run_agents(ranked, query, config)
     context="/n/n".join(agent_result)
