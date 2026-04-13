@@ -21,7 +21,17 @@ def browser_config():
     except json.JSONDecodeError as e:
         print(f"Ошибка структуры файла конфинурации: {config_path.name} в строке: {e.lineno}")
     except Exception as e:
-        print(f"Ошибка загрузки конфиг-файла: {e}")
+        print(f"Ошибка загрузки конфиг-файла {config_path.name} : {e}")
+
+def handler_config():
+    config_path=Path(__file__).resolve().parents[1]/"configs/handler_conf.json"
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Ошибка структуры файла конфигурации: {config_path.name} в строке: {e.lineno}")
+    except Exception as e:
+        print(f"Ошибка загрузки конфиг-файла {config_path.name} : {e}")
 
 async def appeal_to_ollama(full_prompt):
     async with aiohttp.ClientSession() as session:

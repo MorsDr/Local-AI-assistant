@@ -1,12 +1,13 @@
-import requests
 import psycopg2
-import os
 import sys
 from datetime import datetime, timedelta
 import asyncio
 from browser_module import browser_answer
 import re
 from rag_access import docs_search
+from utils import handler_config
+from ollama import AsyncClient
+import json
 
 # Конфигурация
 DB_CONFIG = {
@@ -15,19 +16,8 @@ DB_CONFIG = {
     "password": "12345", # Замени на свой
     "host": "localhost"
 }
-OLLAMA_URL = "http://localhost:11434/api/generate"
 
-def get_file_content(path):
-    """Одноразовое чтение файла для передачи в контекст"""
-    try:
-        if os.path.isfile(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                return f.read()
-    except Exception as e:
-        return f"[Ошибка доступа к файлу: {e}]"
-    return None
-
-def log_to_db(prompt, thought, response, file_path=None):
+def log_to_db(prompt, thought, response):
     try:
         with psycopg2.connect(**DB_CONFIG) as conn:
             with conn.cursor() as cur:
@@ -39,105 +29,81 @@ def log_to_db(prompt, thought, response, file_path=None):
     except Exception as e:
         print(f"Ошибка БД: {e}")
 
-def ask_deepseek(user_input, target_file=None):
-    context_content = ""
-    if target_file:
-        content = get_file_content(target_file)
-        if content:
-            context_content = f"\n\n--- СОДЕРЖИМОЕ ФАЙЛА {target_file} ---\n{content}\n--- КОНЕЦ ФАЙЛА ---\n"
-    
-    # Формируем промпт. Контент файла идет как одноразовая добавка.
-    full_prompt = f"{user_input}{context_content}"
-    
-    payload = {
-        "model": "Archangel",
-        "prompt": full_prompt,
-        "stream": False
-    }
-    
-    try:
-        r = requests.post(OLLAMA_URL, json=payload, timeout=120)
-        r.raise_for_status()
-        data = r.json()
-        
-        full_response = data.get("response", "")
-        
-        # Парсим рассуждения (thought)
-        if "<think>" in full_response and "</think>" in full_response:
-            parts = full_response.split("</think>", 1)
-            thought = parts[0].replace("<think>", "").strip()
-            answer = parts[1].strip()
-        else:
-            thought = "No chain of thought provided."
-            answer = full_response.strip()
+class AI_System:
+    def __init__(self):
+        self.client=AsyncClient(host='http://localhost:11434')
+        self.router_model="qwen2.5:1.5b"
+        self.main_model="archangel"
+        self.history=[]
+        self.config=handler_config()
 
-        log_to_db(user_input, thought, answer, target_file)
-        return thought, answer
-    except Exception as e:
-        return None, f"Ошибка при обращении к Ollama: {e}"
+    async def router_request(self, user_input):
+        try:
+            print("1")
+            system_prompt=self.config["prompts"]["router_system"]
+            print("2")
+            response=await self.client.chat(model=self.router_model, messages=[{'role':'system', 'content':system_prompt}, {'role':'user', 'content':user_input}], format='json')
+            print("3")
+            return json.loads(response.message.content)
+        except json.JSONDecodeError:
+            print("Ошибка струтуры json")
+            return {"task":[], "use_db":False, "intent":"fallback"}
+        except Exception as e:
+            print(f"Ошибка: {e}")
+            return {"task":[], "use_db":False}
+
+    async def execute_tasks(self, plan):
+        context=""
+        if plan.get('tasks'):
+            for task in plan['tasks']:
+                result=await browser_answer(task)
+                context += f"\nSearch result ({task}): {result}"
+        #if plan.get('use_db'):
+            
+        return context
+
+    async def generate_final_answer(self, user_input, extra_context):
+        if extra_context:
+            full_prompt=f"Контекст для ответа: {extra_context}\n\nЗапрос пользователя: {user_input}"
+        else:
+            full_prompt=user_input
+        tmp_messages=self.history+[{'role':'user', 'content':full_prompt}]
+        response=await self.client.chat(model=self.main_model, messages=tmp_messages)
+        print(type(response))
+        self.history.append({'role':'user', 'content':user_input})
+        self.history.append({'role':'assistant', 'content':response.message.content})
+        return response.message.content
 
 async def main_loop():
-
-    print("--- Система готова. Жду запрос (DeepSeek-R1) ---")
-
+    print("Инициализация Системы.....")
+    system=AI_System()
+    print(f"Инициализация завершена.\nМодель-роутер: {system.router_model}\nОсновная модель: {system.main_model}")
+    print("Для выхода из диалога введите '/exit'. История будет сохранена локально")
+    
     while True:
-
-        user_input = input("\nВы: ")
-
-        if user_input.lower() in ["exit", "quit"]:
+        try:
+            user_input=input("Вы: ")
+            print("4")
+            if not user_input.strip():
+                continue
+            print("5")
+            if user_input.strip() == "/exit":
+                #save to db
+                break
+            print("6")
+            plan=await system.router_request(user_input)
+            print("7")
+            extra_context=await system.execute_tasks(plan)
+            print("8")
+            answer=await system.generate_final_answer(user_input, extra_context)
+            print("9")
+            print(f"\nОтвет:\n{answer}\n")
+        except KeyboardInterrupt:
+            print("\nПрерывание сессии. Сохраняю данные.....")
+            #save to db
             break
-
-        file_to_read = None
-
-        # обработка команды file:
-        if user_input.startswith("file:"):
-
-            parts = user_input.split(" ", 1)
-            file_to_read = parts[0].replace("file:", "")
-            user_input = parts[1] if len(parts) > 1 else "Проанализируй этот файл."
-
-        # первый запрос модели
-        thought, answer = ask_deepseek(user_input, file_to_read)
-
-        print(f"\n[ХОД МЫСЛЕЙ]\n{thought}")
-
-        # проверяем нужен ли интернет
-        if "[SEARCH:" in answer:
-
-            try:
-
-                query = answer.split("[SEARCH:")[1].split("]")[0].strip()
-
-                print(f"\n[*] Модель запросила поиск: {query}")
-                result=await browser_answer(query)
-                print(f"\nОтвет:\n{result}")
-
-            except Exception as e:
-
-                print(f"[Ошибка браузера]: {e}")
-
-        else:
-            print(f"\n[ОТВЕТ]\n{answer}")
-
-        if "[DOCS:" in answer:
-            try:
-                match=re.search(r"\[DOCS:<(.*?)>\]", answer)
-                if match:
-                    query_text=match.group(1)
-                    print(f"Запрос к БД с темой: {query_text}")
-                    DB_answer=docs_search(query_text)
-                    print("Данные получены формирую финальный ответ")
-
-                    final_prompt = f"""Контент по запросу: {query_text}, найденый в БД документаций {DB_answer}.
-                    На основе этих данных сформируй финальный ответ на вопрос пользователя {user_input}"""
-
-                    thought, final_answer=ask_deepseek(final_prompt)
-                    print(f"\n[ОТВЕТ]\n{final_answer}")
-
-            except Exception as e:
-                print(f"Ошибка БД: {e}")
-        else:
-            print(f"\n[ОТВЕТ]\n{answer}")
+        except Exception as e:
+            print(f"Ошибка работы: {e}")
 
 
 if __name__ == "__main__":

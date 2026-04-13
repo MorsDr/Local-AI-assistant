@@ -123,8 +123,4 @@ async def browser_answer(query):
     ranked=rank_list(links,config)
     agent_result=await run_agents(ranked, query, config)
     context="/n/n".join(agent_result)
-    final_prompt=f"""Answer the question using the context below.
-                     {context}
-                     Question:
-                     {query}"""
-    return await appeal_to_ollama(final_prompt)
+    return context
