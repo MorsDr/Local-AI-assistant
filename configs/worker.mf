@@ -1,0 +1,3 @@
+FROM codestral
+PARAMETER num_gpu -1
+PARAMETER num_ctx 16384

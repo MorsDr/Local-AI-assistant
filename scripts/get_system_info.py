@@ -42,7 +42,7 @@ def get_ram_info(env):
             return "Unknown RAM"
     return "Unknown RAM"
 
-def get_gpu_specs(env):
+def get_gpu_info(env):
     if env["os_family"].lower() == "windows":
         try:
             gpu_info=subprocess.chek_output('wmic path win32_Video_controller get name', shell=True).decode('cp1251', errors='ignore')
@@ -100,14 +100,37 @@ def get_cpu_info(env):
             return "Unknown CPU"
     return "Unknown CPU"
 
-def get_hardware_specs(env):
-    specs={"cpu":"Unknown", "gpu":"Unknown", "RAM":"Unknown"}
+def get_container_resources():
+    res={"CPU_limit":"Unset", "RAM_limit":"Unset"}
+    try:
+        path="/sys/fs/cgroup/memory/memory.limit_in_bytes"
+        if not os.path.exists(path):
+            path="/sys/fs/cgroup/memory.max"
+
+        with open(path, "r") as f:
+            val=f.read().strip()
+            if val != "max" and int(val)<0x7FFFFFFFFFFFFFFF:
+                res["RAM_limit"]=f"{round(int(val)/(1024**3))}GB"
+    except: pass
+
+    try:
+        res["CPU_limit"]=f"{os.cpu_count()} Cores"
+    except: pass
+
+    return res
+
+def get_hardware_specs():
+    specs={"CPU":"Unknown", "GPU":"Unknown", "RAM":"Unknown"}
+    docker_res={"CPU_limit":"Unset", "RAM_limit":"Unset"}
+    env=get_base_env()
     if env["is_docker"]:
-        print("In docker") 
+        docker_res=get_container_resources()
+        specs["RAM"]=get_ram_info({"os_family":"Linux"})
+        specs["CPU"]=get_cpu_info({"os_family":"Linux"})
+        specs["GPU"]=get_gpu_info({"os_family":"Linux"})
     else:
         specs["RAM"]=get_ram_info(env)
-        specs["gpu"]=get_gpu_specs(env)
-        specs["cpu"]=get_cpu_info(env)
-    return specs
-env=get_base_env()
-print(get_hardware_specs(env))
+        specs["GPU"]=get_gpu_info(env)
+        specs["CPU"]=get_cpu_info(env)
+    return env,specs,docker_res
+

@@ -1,11 +1,12 @@
 import psycopg2
 import sys
+from get_system_info import get_hardware_specs
 from datetime import datetime, timedelta
 import asyncio
 from browser_module import browser_answer
 import re
 from rag_access import docs_search
-from utils import handler_config
+from utils import handler_config, savencheck_specs
 from ollama import AsyncClient
 import json
 
@@ -32,18 +33,15 @@ def log_to_db(prompt, thought, response):
 class AI_System:
     def __init__(self):
         self.client=AsyncClient(host='http://localhost:11434')
-        self.router_model="qwen2.5:1.5b"
-        self.main_model="archangel"
+        self.router_model="router"
+        self.main_model="worker"
         self.history=[]
         self.config=handler_config()
 
     async def router_request(self, user_input):
         try:
-            print("1")
             system_prompt=self.config["prompts"]["router_system"]
-            print("2")
             response=await self.client.chat(model=self.router_model, messages=[{'role':'system', 'content':system_prompt}, {'role':'user', 'content':user_input}], format='json')
-            print("3")
             return json.loads(response.message.content)
         except json.JSONDecodeError:
             print("Ошибка струтуры json")
@@ -77,26 +75,22 @@ class AI_System:
 async def main_loop():
     print("Инициализация Системы.....")
     system=AI_System()
-    print(f"Инициализация завершена.\nМодель-роутер: {system.router_model}\nОсновная модель: {system.main_model}")
+    print(f"Инициализация завершена.\nМодель-роутер: qwen2.5:1.5b\nОсновная модель: codestral")
     print("Для выхода из диалога введите '/exit'. История будет сохранена локально")
-    
+    sys_info=get_hardware_specs()
+    savencheck_specs(sys_info)
     while True:
         try:
             user_input=input("Вы: ")
-            print("4")
             if not user_input.strip():
                 continue
-            print("5")
             if user_input.strip() == "/exit":
                 #save to db
                 break
-            print("6")
             plan=await system.router_request(user_input)
-            print("7")
             extra_context=await system.execute_tasks(plan)
-            print("8")
+            print(plan, extra_context)
             answer=await system.generate_final_answer(user_input, extra_context)
-            print("9")
             print(f"\nОтвет:\n{answer}\n")
         except KeyboardInterrupt:
             print("\nПрерывание сессии. Сохраняю данные.....")
