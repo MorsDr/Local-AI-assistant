@@ -61,12 +61,17 @@ class AI_System:
         return context
 
     async def generate_final_answer(self, user_input, extra_context):
+        env=self.config['specs']['Environment']['os_family']+", "+self.config['specs']['Environment']['os_name']
+        docker=self.config['specs']['Environment']['is_docker']
+        docker_specs="CPU: "+self.config['specs']['Docker Specification']['CPU_limit']+", RAM: "+self.config['specs']['Docker Specification']['RAM_limit']
+        host_specs="CPU: "+self.config['specs']['Host Specification']['CPU']+", GPU: "+self.config['specs']['Host Specification']['GPU']+", RAM: "+self.config['specs']['Host Specification']['RAM']
+        system_prompt=self.config["prompts"]["main_model"]
         if extra_context:
             full_prompt=f"Контекст для ответа: {extra_context}\n\nЗапрос пользователя: {user_input}"
         else:
             full_prompt=user_input
         tmp_messages=self.history+[{'role':'user', 'content':full_prompt}]
-        response=await self.client.chat(model=self.main_model, messages=tmp_messages)
+        response=await self.client.chat(model=self.main_model, messages=[{'role':'assistant', 'content':system_prompt}, *tmp_messages])
         print(type(response))
         self.history.append({'role':'user', 'content':user_input})
         self.history.append({'role':'assistant', 'content':response.message.content})

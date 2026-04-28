@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 import json
 
 def html_cleaner(raw_text):
+    if not raw_text:
+        return ""
     soup=BeautifulSoup(raw_text, 'lxml')
     for anchor in soup.find_all("a", class_="headelink"):
         anchor.decompose()

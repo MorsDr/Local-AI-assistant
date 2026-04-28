@@ -58,12 +58,19 @@ async def fetch_page_adv(url,config):
             browser=await p.chromium.launch(headless=True)
             context=await browser.new_context(user_agent=random.choice(config["user_agents"]), viewport={'width':1920, 'height':1080})
             page=await context.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-            await page.mouse.wheel(0,500)
-            await asyncio.sleep(2)
-            content=await page.content()
-            await browser.close()
-            return content
+            await page.route("**/*. {png,jpg,jpeg,svg,webp,gif,woff,woff2}", lambda route:route.abort())
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                await page.mouse.wheel(0,1000)
+                await page.wait_for_selector("p", state="attached", timeout=5000)
+                await asyncio.sleep(2)
+                content=await page.content()
+                return content
+            except Exception as e:
+                print(e)
+                pass
+            finally:
+                await browser.close()
     except Exception as e:
         print(f"Получить доступ к {url} продвинутым парсером не удалось: {e}")
         return ""
@@ -100,13 +107,15 @@ async def agent_worker(name, links, query, session, config):
     for url in links:
         await asyncio.sleep(random.uniform(1,3)) 
         html=await fetch_page(session, url)
-        if not html or is_blocked(html, block_markers):
-            html=await fetch_page_adv(url, config)
-            if not html or is_blocked(html, block_markers):
-                continue
         text=html_cleaner(html)
-        summary=await extract_relevant(text, query)
-        result.append(summary)
+        is_bad=is_blocked(html, block_markers) or len(text) < 500
+        if is_bad:
+            print(f"Advanced parser for {url}")
+            html=await fetch_page_adv(url, config)
+            text=html_cleaner(html)
+        if text:
+            summary=await extract_relevant(text, query)
+            result.append(summary)
     return f"[{name}]\n" + "\n".join(result)
 
 async def run_agents(links, query, config):
@@ -122,5 +131,6 @@ async def browser_answer(query):
     links=await search(query, config)
     ranked=rank_list(links,config)
     agent_result=await run_agents(ranked, query, config)
-    context="/n/n".join(agent_result)
+    context="\n\n".join(agent_result)
+    print(context)
     return context
