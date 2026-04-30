@@ -53,9 +53,10 @@ def savencheck_specs(current_data):
             comb_data |= tupl
     except Exception as e:
         print(e)
+    print(comb_data)
     spec_string=json.dumps(comb_data, sort_keys=True).encode('utf-8')
-    spec_hash=hashlib.md5(spec_string).hexdigest()
-    if spec_hash != data.get("hash"): 
+    spec_hash=hashlib.sha256(spec_string).hexdigest()
+    if spec_hash != data.get("specs", {}).get("hash"): 
         print("Specification data uncorrect or missing\n Rewriting...")
         structured_data={"hash":spec_hash,
             "Environment":current_data[0],
@@ -66,3 +67,15 @@ def savencheck_specs(current_data):
             json.dump(data, f, indent=4, ensure_ascii=False)
     else:
         print("Specification data up-to-date")
+        
+def dir_existing(dir_name:str)->Path:
+    path=Path(dir_name)
+    if path.exists():
+        if path.is_dir():
+            print("Directory exists")
+        else:
+            raise FileExistsError("Directory name taken by file")
+    else:
+        path.mkdir(parents=True, exist_ok=True)
+
+    return path

@@ -1,3 +1,4 @@
+import logging
 import psycopg2
 import sys
 from get_system_info import get_hardware_specs
@@ -9,6 +10,7 @@ from rag_access import docs_search
 from utils import handler_config, savencheck_specs
 from ollama import AsyncClient
 import json
+from project_logger import init_logging, logger
 
 # Конфигурация
 DB_CONFIG = {
@@ -61,6 +63,7 @@ class AI_System:
         return context
 
     async def generate_final_answer(self, user_input, extra_context):
+        lang=self.config['lang']
         env=self.config['specs']['Environment']['os_family']+", "+self.config['specs']['Environment']['os_name']
         docker=self.config['specs']['Environment']['is_docker']
         docker_specs="CPU: "+self.config['specs']['Docker Specification']['CPU_limit']+", RAM: "+self.config['specs']['Docker Specification']['RAM_limit']
@@ -78,7 +81,8 @@ class AI_System:
         return response.message.content
 
 async def main_loop():
-    print("Инициализация Системы.....")
+    init_logging()
+    logging.info("System itialization...")
     system=AI_System()
     print(f"Инициализация завершена.\nМодель-роутер: qwen2.5:1.5b\nОсновная модель: codestral")
     print("Для выхода из диалога введите '/exit'. История будет сохранена локально")
