@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import glob
 from datetime import datetime
@@ -17,7 +18,8 @@ class Logger_Manager:
 
     def setup_logging(self):
         log_path=self._get_log_path(is_crash=False)
-        logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s", handlers=[logging.FileHandler(log_path, encodinf='utf-8'), logging.StreamHandler(sys.stdout)])
+        print(log_path)
+        logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s", handlers=[logging.FileHandler(log_path, encoding='utf-8'), logging.StreamHandler(sys.stdout)])
         self._rotate_logs()
         
     def mark_as_crash(self):
@@ -47,4 +49,4 @@ class Logger_Manager:
 
 logger=Logger_Manager()
 def init_logging():
-    logger.setup_logging
+    logger.setup_logging()
