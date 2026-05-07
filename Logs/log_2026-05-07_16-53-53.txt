@@ -1,0 +1,3 @@
+[2026-05-07 16:53:53,915] INFO: System itialization...
+[2026-05-07 16:53:53,919] INFO: System initialized. Main model: codestral; Router model: qwen2.5:1.5b
+[2026-05-07 16:54:01,933] INFO: Keyboard interrupt

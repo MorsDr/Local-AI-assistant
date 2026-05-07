@@ -38,9 +38,14 @@ def handler_config():
 
 async def appeal_to_ollama(full_prompt):
     async with aiohttp.ClientSession() as session:
-        async with session.post("http://localhost:11434/api/chat", json={"model":"worker", "prompt":full_prompt, "stream":False}) as r:
-            data=await r.json()
-            return data.get("response","")
+        payload={"model":"worker", "prompt":full_prompt, "stream":False, "options":{"temperature":0.2, "num_ctx":8192}}
+        async with session.post("http://localhost:11434/api/generate", json=payload) as r:
+            if r.status==200:
+                data=await r.json()
+                return data.get("response","").strip()
+            else:
+                print("ошибка")
+                return ""
 
 def savencheck_specs(current_data):
     path=Path("configs/main_conf.json")

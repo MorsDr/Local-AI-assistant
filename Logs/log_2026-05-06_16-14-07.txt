@@ -1,0 +1,60 @@
+[2026-05-06 16:14:07,540] INFO: System itialization...
+[2026-05-06 16:14:07,545] INFO: System initialized. Main model: codestral; Router model: qwen2.5:1.5b
+[2026-05-06 16:14:30,934] INFO: Sending: Найди информацию о Метро 2039 to router module
+[2026-05-06 16:14:30,934] INFO: Router model received: Найди информацию о Метро 2039. Start creating json answer
+[2026-05-06 16:14:30,934] INFO: Usig prompt: You are a system dispatcher. Analyze the request. Your goal is to return a valid JSON with the following keys:'tasks': an array of strings (these must be search queries; IMPORTANT: use the search text itself, not URLs). 'intent': a string (a brief description of the intent). Respond STRICTLY in JSON format without markdown formatting or any additional text.. Promt take from 'configs/main_conf.json' key: [router_system]
+[2026-05-06 16:14:33,991] INFO: HTTP Request: POST http://localhost:11434/api/chat "HTTP/1.1 200 OK"
+[2026-05-06 16:14:33,992] INFO: Proccesing tasks from {'tasks': ['https://www.google.com/search?q=Метро+2039'], 'intent': 'Find information about the year 2039 in the context of the Metro series.'}
+[2026-05-06 16:14:33,992] INFO: Sending https://www.google.com/search?q=Метро+2039 in browser module to get information
+[2026-05-06 16:14:36,622] INFO: Error in engine google: DDGSException("ConnectError: ConnectError('error sending request for url (https://www.google.com/search?q=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039&filter=1&start=0&hl=en-US&lr=lang_en&cr=countryUS)', 'https://www.google.com/search?q=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039&filter=1&start=0&hl=en-US&lr=lang_en&cr=countryUS')")
+[2026-05-06 16:14:36,847] INFO: response: https://grokipedia.com/api/typeahead?query=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039&limit=1 200
+[2026-05-06 16:14:36,904] INFO: response: https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=https%3A//www.google.com/search%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039 200
+[2026-05-06 16:14:37,108] INFO: response: https://search.yahoo.com/search;_ylt=TnnTMTQVe8tOlJOrH_XAoSLt;_ylu=xcAR38JJt8ne5gN69PjEKZ3cWhIRzCdClEWPpee9ehVP_Xc?p=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039 200
+[2026-05-06 16:14:38,130] INFO: response: https://yandex.by/search/site/?text=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039&web=1&searchid=4551792&rdrnd=456360&lr=155&redircnt=1778073277.1 200
+[2026-05-06 16:14:38,429] INFO: response: https://www.mojeek.com/search?q=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039 403
+[2026-05-06 16:14:39,322] INFO: response: https://search.brave.com/search?q=https%3A%2F%2Fwww.google.com%2Fsearch%3Fq%3D%D0%9C%D0%B5%D1%82%D1%80%D0%BE%2B2039&source=web 200
+[2026-05-06 16:14:50,674] INFO: Retirning gatherd information: 
+Search result (https://www.google.com/search?q=Метро+2039): [agent_1]
+
+
+
+[agent_2]
+
+
+
+[agent_3]
+
+
+
+[agent_4]
+
+
+
+[agent_5]
+
+
+[2026-05-06 16:14:50,674] INFO: All data received, sending it to main model to generate final answer
+[2026-05-06 16:14:50,674] INFO: Main model received: Найди информацию о Метро 2039; 
+Search result (https://www.google.com/search?q=Метро+2039): [agent_1]
+
+
+
+[agent_2]
+
+
+
+[agent_3]
+
+
+
+[agent_4]
+
+
+
+[agent_5]
+
+
+[2026-05-06 16:14:50,674] INFO: Using prompt: You are an advanced AI assistant. You will be provided with context from the internet or a database. Your task is to provide a detailed and logical response to the user based on this context. If the context is insufficient, respond based on your own knowledge. IMPORTANT: Do not mention any agents in your response. Use the content provided to you from agents or databases, compare and verify the content, and only then provide an answer. For context, here are the specifications of the PC you are running on: Environment: {env} Inside a container: {docker} Container specifications (if applicable): {docker_specs} Host system specifications: {host_specs} Regardless of the language of the provided information, always respond in the following language: {lang}.. Prompt take from 'configs/main_conf.json' key [main_model]
+[2026-05-06 16:14:50,674] INFO: Preparing data to sendind to AI
+[2026-05-06 16:14:50,674] INFO: Final view of data created based on 'self.history' and 'full_prompt': [{'role': 'user', 'content': 'Context: \nSearch result (https://www.google.com/search?q=Метро+2039): [agent_1]\n\n\n\n[agent_2]\n\n\n\n[agent_3]\n\n\n\n[agent_4]\n\n\n\n[agent_5]\n\n\n\nUser question: Найди информацию о Метро 2039'}].
+Sending data to main model to generate answer
