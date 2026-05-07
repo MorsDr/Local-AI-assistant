@@ -11,7 +11,8 @@ from ddgs import DDGS
 from playwright.async_api import async_playwright
 from fake_useragent import UserAgent
 
-def get_random_headers(config, ua_generator):
+ua_generator=UserAgent(browsers=['chrome', 'edge'])
+def get_random_headers(config):
     headers=config.get("headers_template",{}).copy()
     current_ua=ua_generator.random
     headers["User-Agent"]=current_ua
@@ -40,7 +41,7 @@ async def search(query, config):
     await asyncio.sleep(random.uniform(1,4))
     excluded=config.get("excluded_domains", [])
     with DDGS() as ddgs:
-        results=ddgs.text(query, max_results=20)
+        results=ddgs.text(query, max_results=50)
         final_results=[]
         for r in results:
             url=r['href'].lower()
@@ -61,12 +62,12 @@ async def fetch_page(session, url):
         print(f"Не удалось загрузить {url}:{e}")
         return ""
 
-async def fetch_page_adv(url,config, ua_generator):
+async def fetch_page_adv(url,config):
     print(f"В соответствии с ошибкой доступа к {url} запускаю продвинутый парсинг")
     try:
         async with async_playwright() as p:
             browser=await p.chromium.launch(headless=True)
-            context=await browser.new_context(user_agent=get_random_headers(config, ua_generator), viewport={'width':1920, 'height':1080})
+            context=await browser.new_context(user_agent=get_random_headers(config), viewport={'width':1920, 'height':1080})
             page=await context.new_page()
             await page.route("**/*. {png,jpg,jpeg,svg,webp,gif,woff,woff2}", lambda route:route.abort())
             try:
@@ -91,6 +92,35 @@ def classify_url(url:str, config):
             if domain in url:
                 return category
     return "other"
+
+def smart_trim(text, query, target_len):
+    if len(text) <= target_len:
+        return text
+    sentences=re.split(r'(?<=[.!?])+', text)
+    query_words=set(re.findall(r'\w{3,}',query.lower()))
+    useful_sentences=[]
+    for s in sentences:
+        if any(word in s.lower() for word in query_words):
+            useful_sentences.append(s)
+    result=" ".join(useful_sentences)
+    return result[:target_len] if result else text[:target_len]
+
+def optimize_context(pages_data, query, config):
+    max_total=config.get("max_text_len", 30000)
+    total_len=sum(len(p) for p in pages_data)
+    if total_len<=max_total:
+        return pages_data
+    trim_limits=config.get("trim_limits",[])
+    optimized_data=[]
+    for i, text in enumerate(pages_data):
+        reduction_target=trim_limits[i] if i<len(trim_limits) else 5500
+        new_target_len=max(2500, len(text) - reduction_target)
+        optimized_data.append(smart_trim(text, query, new_target_len))
+    total_len=sum(len(p) for p in optimized_data)
+    while total_len>max_total and len(optimized_data)>1:
+        removed=optimized_data.pop()
+        total_len-=len(removed)
+    return optimized_data
     
 def score_calc(items, query, config):
     weights=config.get("ranking_weights".{})
@@ -153,40 +183,39 @@ async def extract_relevant(text, query):
     return await appeal_to_ollama(prompt)
 
 async def agent_worker(name, links, query, session, config):
-    result=[]
-    block_markers=config.get("block_markers", [])
-    for url in links:
-        await asyncio.sleep(random.uniform(1,3)) 
-        html=await fetch_page(session, url)
-        print(html)
+    try:
+        html=fetch_page(session, url)
         text=html_cleaner(html)
-        is_bad=is_blocked(html, block_markers) or len(text) < 300
-        if is_bad:
-            print(f"Advanced parser for {url}")
+        if is_blocked(html, config.get("block_markers",[])) or len(text)<300:
             html=await fetch_page_adv(url, config)
             text=html_cleaner(html)
-        if text:
-            print(text)
-            summary=await extract_relevant(text, query)
-            result.append(summary)
-            print(result)
-    return f"[{name}]\n"+"\n".join(result)
-
-async def run_agents(links, query, config, ua_generator):
-    agents_count=config["limits"]["agents"]
-    split=split_links(links, agents_count)
-    async with aiohttp.ClientSession(headers=get_random_headers(config, ua_generator)) as session:
+        if len(text)>300:
+            return f"-------SOURCE:{url}-------\n{text[:5000]}"
+    except Exception as e:
+        print(f"Error {name} in {url}: {e}")
+        return None
+    
+async def run_agents(links, query, config):
+    async with aiohttp.ClientSession(headers=get_random_headers(config)) as session:
         await session.get("https://duckduckgo.com")
-        task=[agent_worker(f"agent_{i+1}", chunk, query, session, config) for i, chunk in enumerate(split)]
-        return await asyncio.gather(*task)
+        tasks=[]
+        for i, url in enumerate(links):
+            tasks.append(agent_worker(f"worker_{i+1}", url, query, session, config"))
+        result=await asymcion.gather(*tasks)
+        return [r for r in result if r]
 
 async def browser_answer(query):
-    ua_generator=UserAgent(browsers=['chrome', 'edge'])
     config=browser_config()
     links=await search(query, config)
-    ranked=rank_list(links,config)
-    agent_result=await run_agents(ranked, query, config, ua_generator)
-    print(agent_result)
-    context="\n\n".join(agent_result)
+    ranked=rank_list(links, query, config)
+    if not ranked:
+        return "Search Error"
+    pages_data=await run_agents(ranked, query, config)
+    print(pages_data)
+    if not pages_data:
+        return "Cant get data from sites"
+         
+    context="\n\n".join(data)
+    prompt=f"""
     print(context)
     return context
