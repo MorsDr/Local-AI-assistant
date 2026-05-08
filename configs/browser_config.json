@@ -1,25 +1,10 @@
 {
-  "sources": {
-    "official": [
-      "python.org",
-      "pytorch.org",
-      "tensorflow.org",
-      "openai.com"
+  "official_domains":[
+    "python.org",
+    "pytorch.org",
+    "tensorflow.org",
+    "openai.com"
     ],
-    "docs": [
-      "docs.python.org",
-      "developer.mozilla.org"
-    ],
-    "trusted": [
-      "wikipedia.org",
-      "github.com",
-      "stackoverflow.com"
-    ],
-    "community": [
-      "reddit.com",
-      "medium.com"
-    ]
-  },
   "trust_scores": {
     "official": 1.2,
     "docs": 1.1,

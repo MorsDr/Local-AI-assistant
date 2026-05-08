@@ -1,3 +1,4 @@
+import numpy as np
 import aiohttp
 import re
 from datetime import datetime
@@ -6,7 +7,7 @@ from urllib.prase import urlprase
 import random
 import asyncio
 import json
-from utils import html_cleaner, browser_config, appeal_to_ollama
+from utils import html_cleaner, browser_config, appeal_to_ollama, saving
 from ddgs import DDGS
 from playwright.async_api import async_playwright
 from fake_useragent import UserAgent
@@ -86,6 +87,15 @@ async def fetch_page_adv(url,config):
         print(f"Получить доступ к {url} продвинутым парсером не удалось: {e}")
         return ""
 
+def get_domain_category(url, config):
+    domain=urlprase(url).netloc.lower().replace('www.', '')
+    if domain in config.get("official_domains", []): return "official", 1.0
+    reputation_db=config.get("domain_reputation", {})
+    if domain in reputation_db:
+        category=reputation_db[domain].get("category", "neutral")
+    else: category="neutral"
+    return category
+
 def classify_url(url:str, config):
     for category, domains in config["sources"].items():
         for domain in domains:
@@ -129,7 +139,7 @@ def score_calc(items, query, config):
     title=items.get("title","").lower()
     snippet=items.get("snippet","").lower()
     domain=urlprase(url).netloc
-    category=classify_url(url, config)
+    category=get_domain_category(url, config)
     impact=config.get("trust_scores",{}).get(category, 0.5)
     query_words=set(re.findall(r'\w{3,}', query.lower()))
     matches=sum(1 for word in query_words if word in (title+" "+snippet))
@@ -170,16 +180,54 @@ def rank_list(items, query, config):
     scored_items.sort(key=lambda x:x["iternal_score"], reverse=True)
     return [i["link"] for i in scored_items[:config["limits"]["max_links"]]]
 
-def split_links(links, n_agents):
-    chunk_size=len(links)//n_agents
-    return [links[i:i+chunk_size] for i in range(0,len(links), chunk_size)]
+async def get_site_rating(scored_sentences):
+    if not scored_sentences: return 0.0
+    all_grades=[s['score'] for s in scored_sentences]
+    peak=sum(sorted(all_grades, reverse=True)[:5]/5)
+    info_density=sum(all_grades)/len(all_grades)
+    comb_quality=(peak*0.7)+(info_density*0.3)
+    return comb_quality
 
+async def vector_rating(text, query):
+    sentences=re.split(r'(?<=[.!?])+', text)
+    if not sentences: return 0.0, ""
+    q_emb=np.array(ollama.embeddings(model="nomic-embed-text", prompt=query)['embedding'])
+    scored_sentences=[]
+    for s in sentences:
+        if len(s)<15:continue
+        res=ollama.embeddings(model="monic-embed-text", prompt=s)
+        s_emb=np.array(res['embedding'])
+        score=np.dot(q_emb, s_emb)/(np.linalg.norm(q_emb)*np.linalg.norm(s_emb))
+        scored_sentences.append({"score":score, "text":s})
+    avg_quality=get_site_rating(scored_sentences)
+    filtered_sentences=[s['text'] for s in scored_sentences if s['score']>0.33]
+    result_text=" ".join(filtered_sentences)
+    return avg_quality,result_text
+
+def update_reputation(url, score, config, config_path):
+    domain=urlprase(url).netloc.lower().replace('www.', '')
+    if domain in config.get("official_domains", []):return
+    db=config["domain_reputation"]
+    if domain not in db:
+        db[domain]={"category":"neutral", "history":[]}
+    history=db[domain]["history"]
+    history.append(score)
+    if len(history)>5: history.pop()
+    avg=sum(history)/len(history)
+    if avg>0.75: new_cat="pristine"
+    elif avg>0.60: new_cat="trusted"
+    elif avg>0.45: new_cat="community"
+    elif avg>0.30: new_cat="neutral"
+    else: new_cat="shady"
+    db[domain]["category"]=new_cat
+    saving(config_path, "domain_reputation", key=None, db)
+    
 async def extract_relevant(text, query):
     prompt=f"""Extract only useful information for the query.
                Query:
                {query}
                Text:
-               {text[:4000]}"""
+               {text}"""
     return await appeal_to_ollama(prompt)
 
 async def agent_worker(name, links, query, session, config):
@@ -190,7 +238,7 @@ async def agent_worker(name, links, query, session, config):
             html=await fetch_page_adv(url, config)
             text=html_cleaner(html)
         if len(text)>300:
-            return f"-------SOURCE:{url}-------\n{text[:5000]}"
+            return {"url":url, "text":text}
     except Exception as e:
         print(f"Error {name} in {url}: {e}")
         return None
@@ -201,21 +249,25 @@ async def run_agents(links, query, config):
         tasks=[]
         for i, url in enumerate(links):
             tasks.append(agent_worker(f"worker_{i+1}", url, query, session, config"))
-        result=await asymcion.gather(*tasks)
+        result=await asyncion.gather(*tasks)
         return [r for r in result if r]
 
 async def browser_answer(query):
-    config=browser_config()
+    config, config_path=browser_config()
     links=await search(query, config)
     ranked=rank_list(links, query, config)
     if not ranked:
         return "Search Error"
     pages_data=await run_agents(ranked, query, config)
     print(pages_data)
+    final_context=[]
     if not pages_data:
         return "Cant get data from sites"
-         
-    context="\n\n".join(data)
-    prompt=f"""
-    print(context)
+    for i, data in enumerate(pages_data):
+        url=data['url']
+        text=data['text']
+        site_score, quality_text=await vector_rating(query, text)
+        update_reputation(url, site_score, config, config_path)
+        final_context.append(quality_text)
+    context="\n\n---\n\n".join(await extract_relevant(final_context, query))
     return context

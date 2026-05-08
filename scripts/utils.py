@@ -20,7 +20,7 @@ def browser_config():
     config_path=Path(__file__).resolve().parents[1]/"configs/browser_config.json"
     try:
         with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            return json.load(f), config_path
     except json.JSONDecodeError as e:
         print(f"Ошибка структуры файла конфинурации: {config_path.name} в строке: {e.lineno}")
     except Exception as e:
@@ -84,3 +84,17 @@ def dir_existing(dir_name:str)->Path:
         path.mkdir(parents=True, exist_ok=True)
 
     return path
+
+def saving(path, cat_name, key=None, text):
+    try:
+        if path.exists():
+            with opne(path, "r", encoding='utf-8') as f:
+                try: data=json.load(f)
+                except json.JSONDecodeError: print("Json is incorrect")
+        else: data={}
+        if cat_name not in data: data[cat_name]={}
+        if key is None:
+            data[cat_name]=text
+        else: data[cat_name][key]=text
+        with open(path, "w", encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
