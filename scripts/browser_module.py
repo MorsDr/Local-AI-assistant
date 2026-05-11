@@ -50,6 +50,19 @@ async def search(query, config):
                 final_results.append({"title":r.get("title",""), "link":r.get("href",""), "snippet":e.get("body",""),})
         return final_results
 
+def get_yt_transcript(url):
+    try:
+        video_id=""
+        if "v" in url:
+            video_id=url.split("v=")[1].split("&")[0]
+        elif "youtu.be" in url:
+            video_id=url.split("youtu.be/")[1]
+        transcript_list=YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
+        full_text=" ".join(item['text'] for item in transcript_list)
+        return full_text
+    except Exception as e:
+        return ""
+
 async def fetch_page(session, url):
     try:
         async with session.get(url, timeout=10) as response:
@@ -115,22 +128,26 @@ def smart_trim(text, query, target_len):
     result=" ".join(useful_sentences)
     return result[:target_len] if result else text[:target_len]
 
-def optimize_context(pages_data, query, config):
+def optimize_context(scored_data, config):
     max_total=config.get("max_text_len", 30000)
-    total_len=sum(len(p) for p in pages_data)
+    total_len=sum(len(d['text']) for d in scored_data)
     if total_len<=max_total:
-        return pages_data
-    trim_limits=config.get("trim_limits",[])
-    optimized_data=[]
-    for i, text in enumerate(pages_data):
-        reduction_target=trim_limits[i] if i<len(trim_limits) else 5500
-        new_target_len=max(2500, len(text) - reduction_target)
-        optimized_data.append(smart_trim(text, query, new_target_len))
-    total_len=sum(len(p) for p in optimized_data)
-    while total_len>max_total and len(optimized_data)>1:
-        removed=optimized_data.pop()
-        total_len-=len(removed)
-    return optimized_data
+        return scored_data
+    steps=[(0.30,len(scored_data)), (0.40, len(scored_data)), (0.50, 7), (0.55, 5), (0.65, 3)]
+    from threshold, count in steps:
+        optimized_data=[]
+        start_idx=max(0, len(scored_data) - count)
+        for i, site in enumerate(scored_data):
+            if i>=start_idx:
+               filtered=[s['text'] for s in site['text'] if s['score'] >= threshold]
+               text=" ".join(filtered)
+            else:
+                text=" ".join([s['text'] for s in site['text']])
+            optimized_data.append(text)
+        current_result=" ".join(optimized_data)
+        if len(current_result) <= max_total:
+            return current_result 
+    return current_result[:max_total]
     
 def score_calc(items, query, config):
     weights=config.get("ranking_weights".{})
@@ -200,9 +217,7 @@ async def vector_rating(text, query):
         score=np.dot(q_emb, s_emb)/(np.linalg.norm(q_emb)*np.linalg.norm(s_emb))
         scored_sentences.append({"score":score, "text":s})
     avg_quality=get_site_rating(scored_sentences)
-    filtered_sentences=[s['text'] for s in scored_sentences if s['score']>0.33]
-    result_text=" ".join(filtered_sentences)
-    return avg_quality,result_text
+    return avg_quality,scored_sentences
 
 def update_reputation(url, score, config, config_path):
     domain=urlprase(url).netloc.lower().replace('www.', '')
@@ -223,22 +238,29 @@ def update_reputation(url, score, config, config_path):
     saving(config_path, "domain_reputation", key=None, db)
     
 async def extract_relevant(text, query):
-    prompt=f"""Extract only useful information for the query.
-               Query:
-               {query}
-               Text:
-               {text}"""
-    return await appeal_to_ollama(prompt)
+    prompt=f"""Extract useful information based on query. Delete duplicates in text. Do it without extra text from yourself.
+        Query:\n{query}
+        Text:\n{text}"""
+    return await appeal_to_ollama(prompt, tokens=32000)
 
 async def agent_worker(name, links, query, session, config):
+    special_sites=config.get("special_treatment", [])
+    domain=urlprase(url).netloc.lower().replace('www.', '')
     try:
-        html=fetch_page(session, url)
-        text=html_cleaner(html)
-        if is_blocked(html, config.get("block_markers",[])) or len(text)<300:
-            html=await fetch_page_adv(url, config)
+        if any(site in domain for site in special_sites):
+            if "youtube.com" in domain or "youtu.be" in domain:
+                text=await get_yt_transcript(url)
+                return {"url":url, "text":text}
+            else:
+                continue
+        else:
+            html=fetch_page(session, url)
             text=html_cleaner(html)
-        if len(text)>300:
-            return {"url":url, "text":text}
+            if is_blocked(html, config.get("block_markers",[])) or len(text)<300:
+                html=await fetch_page_adv(url, config)
+                text=html_cleaner(html)
+            if len(text)>300:
+                return {"url":url, "text":text}
     except Exception as e:
         print(f"Error {name} in {url}: {e}")
         return None
@@ -260,14 +282,14 @@ async def browser_answer(query):
         return "Search Error"
     pages_data=await run_agents(ranked, query, config)
     print(pages_data)
-    final_context=[]
     if not pages_data:
         return "Cant get data from sites"
     for i, data in enumerate(pages_data):
         url=data['url']
         text=data['text']
-        site_score, quality_text=await vector_rating(query, text)
+        site_score, scored_text=await vector_rating(query, text)
         update_reputation(url, site_score, config, config_path)
-        final_context.append(quality_text)
-    context="\n\n---\n\n".join(await extract_relevant(final_context, query))
-    return context
+        to_sum_context.append({"url":url, "text":scored_text})
+    context=optimize_context(to_sum_context, config)
+    final_context=extract_relevant(context, query)
+    return final_context

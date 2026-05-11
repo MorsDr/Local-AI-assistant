@@ -36,9 +36,9 @@ def handler_config():
     except Exception as e:
         print(f"Ошибка загрузки конфиг-файла {config_path.name} : {e}")
 
-async def appeal_to_ollama(full_prompt):
+async def appeal_to_ollama(full_prompt, tokens=8192):
     async with aiohttp.ClientSession() as session:
-        payload={"model":"worker", "prompt":full_prompt, "stream":False, "options":{"temperature":0.2, "num_ctx":8192}}
+        payload={"model":"worker", "prompt":full_prompt, "stream":False, "options":{"temperature":0.2, "num_ctx":tokens}}
         async with session.post("http://localhost:11434/api/generate", json=payload) as r:
             if r.status==200:
                 data=await r.json()
