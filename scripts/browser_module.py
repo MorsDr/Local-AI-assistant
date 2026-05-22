@@ -3,10 +3,11 @@ import aiohttp
 import re
 from datetime import datetime
 import dateparser
-from urllib.prase import urlprase
+from urllib.parse import urlparse
 import random
 import asyncio
 import json
+from youtube_transcript_api import YouTubeTranscriptApi
 from utils import html_cleaner, browser_config, appeal_to_ollama, saving
 from ddgs import DDGS
 from playwright.async_api import async_playwright
@@ -47,7 +48,7 @@ async def search(query, config):
         for r in results:
             url=r['href'].lower()
             if not any(domain in url for domain in excluded):
-                final_results.append({"title":r.get("title",""), "link":r.get("href",""), "snippet":e.get("body",""),})
+                final_results.append({"title":r.get("title",""), "link":r.get("href",""), "snippet":r.get("body","")})
         return final_results
 
 def get_yt_transcript(url):
@@ -101,7 +102,7 @@ async def fetch_page_adv(url,config):
         return ""
 
 def get_domain_category(url, config):
-    domain=urlprase(url).netloc.lower().replace('www.', '')
+    domain=urlparse(url).netloc.lower().replace('www.', '')
     if domain in config.get("official_domains", []): return "official", 1.0
     reputation_db=config.get("domain_reputation", {})
     if domain in reputation_db:
@@ -134,12 +135,12 @@ def optimize_context(scored_data, config):
     if total_len<=max_total:
         return scored_data
     steps=[(0.30,len(scored_data)), (0.40, len(scored_data)), (0.50, 7), (0.55, 5), (0.65, 3)]
-    from threshold, count in steps:
+    for threshold, count in steps:
         optimized_data=[]
         start_idx=max(0, len(scored_data) - count)
-        for i, site in enumerate(scored_data):
+        for i, item in enumerate(scored_data):
             if i>=start_idx:
-               filtered=[s['text'] for s in site['text'] if s['score'] >= threshold]
+               filtered=[s['text'] for s in item['text'] if s['score'] >= threshold]
                text=" ".join(filtered)
             else:
                 text=" ".join([s['text'] for s in site['text']])
@@ -150,52 +151,58 @@ def optimize_context(scored_data, config):
     return current_result[:max_total]
     
 def score_calc(items, query, config):
-    weights=config.get("ranking_weights".{})
-    score=0.0
-    url=items.get("link","").lower()
-    title=items.get("title","").lower()
-    snippet=items.get("snippet","").lower()
-    domain=urlprase(url).netloc
-    category=get_domain_category(url, config)
-    impact=config.get("trust_scores",{}).get(category, 0.5)
+    weights=config.get("ranking_weights", {})
+    espec_links=config.get("special_treatment",[])    
     query_words=set(re.findall(r'\w{3,}', query.lower()))
-    matches=sum(1 for word in query_words if word in (title+" "+snippet))
-    tag_score=matches*weights.get("tag_match_weight", 1.0)
     now=datetime.now()
-    found_date=dateparser.parse(title+" "+snippet, settings={'RELATIVE_BASE':now})
-    if nor found_date:
-        return (tag_score+0.5)*impact
-    days_diff=(now - found_date).days
-    month_diff=(now.year - found_date.year)*12+now.month - found_date.month
-    if found_date.year == now.year:
-        score+=1.0
-    else:
-        years_diff=now.year - found_date.year
-        score+=max(0, 1.0 - (years_diff*0.3/impact))
+    output_res=[]
+    for item in items:
+        score=0.0
+        url=items.get("link","").lower()
+        title=items.get("title","").lower()
+        snippet=items.get("snippet","").lower()
+        try:
+            domain=urlparse(url).netloc
+        except Exception:
+            domain=""
+        category=get_domain_category(url, config)
+        impact=config.get("trust_scores",{}).get(category, 0.5)
+        matches=sum(1 for word in query_words if word in (title+" "+snippet))
+        tag_score=matches*weights.get("tag_match_weight", 1.0)
+        found_date=dateparser.parse(title+" "+snippet, settings={'RELATIVE_BASE':now})
+        if not found_date:
+            return (tag_score+0.5)*impact
+        else:
+            days_diff=(now - found_date).days
+            month_diff=(now.year - found_date.year)*12+now.month - found_date.month
+            if found_date.year == now.year:
+                score+=1.0
+            else:
+                years_diff=now.year - found_date.year
+                score+=max(0, 1.0 - (years_diff*0.3/impact))
+            if month_diff<12:
+                month_bonus=max(0, 2.0 - (month_diff*0.15))
+                score+=month_bonus*impact
 
-    if month_diff<12:
-        month_bonus=max(0, 2.0 - (month_diff*0.15))
-        score+=month_bonus*impact
-
-    if days_diff<=30:
-        day_bonus=max(0, 3.0 - (days_diff*0.15))
-        score+=day_bonus*impact
-    final_score=(tag_score+score)*impact
-    espec_links=config.get("special_treatment",[])
-    if espec_links in url:
-        final_score*=weights.get("type_weights",{}).get("video", 0.6)
-    return final_score  
+            if days_diff<=30:
+                day_bonus=max(0, 3.0 - (days_diff*0.15))
+                score+=day_bonus*impact
+            final_score=(tag_score+score)*impact
+            for spec_link in espec_links:
+                if spec_link in url:
+                    final_score*=weights.get("type_weights",{}).get("video", 0.6)
+                    break
+            formatted_item={"url":url, "domain":domain, "category":category, "data":found_date.strftime("%Y-%m-%d") if found_date else None}
+            output_res.append(formatted_item)
+    return output_res  
         
 def rank_list(items, query, config):
-    scored_items=[]
     threshold=config.get("ranking_weights",{}).get("threshold", 1.2)
-    for item in items:
-        score=score_calc(item ,query, config)
-        if score >= threashold:
-            item["iternal_score"]=score
-            scored_items.append(item)
-    scored_items.sort(key=lambda x:x["iternal_score"], reverse=True)
-    return [i["link"] for i in scored_items[:config["limits"]["max_links"]]]
+    scored_items=score_calc(items, query, config)
+    max_link=10
+    filtered_items-[item for item in scored_items if item["score"] >= threshold]
+    filtered_items.sort(key=lambda x:x["iternal_score"], reverse=True)
+    return filtered_items[:max_link]
 
 async def get_site_rating(scored_sentences):
     if not scored_sentences: return 0.0
@@ -220,7 +227,7 @@ async def vector_rating(text, query):
     return avg_quality,scored_sentences
 
 def update_reputation(url, score, config, config_path):
-    domain=urlprase(url).netloc.lower().replace('www.', '')
+    domain=urlparse(url).netloc.lower().replace('www.', '')
     if domain in config.get("official_domains", []):return
     db=config["domain_reputation"]
     if domain not in db:
@@ -235,7 +242,7 @@ def update_reputation(url, score, config, config_path):
     elif avg>0.30: new_cat="neutral"
     else: new_cat="shady"
     db[domain]["category"]=new_cat
-    saving(config_path, "domain_reputation", key=None, db)
+    saving(config_path, db, "domain_reputation", None)
     
 async def extract_relevant(text, query):
     prompt=f"""Extract useful information based on query. Delete duplicates in text. Do it without extra text from yourself.
@@ -243,53 +250,57 @@ async def extract_relevant(text, query):
         Text:\n{text}"""
     return await appeal_to_ollama(prompt, tokens=32000)
 
-async def agent_worker(name, links, query, session, config):
+async def agent_worker(name, item, query, session, config):
     special_sites=config.get("special_treatment", [])
-    domain=urlprase(url).netloc.lower().replace('www.', '')
+    url=item.get("url", "")
+    domain=item.get("domain", "")
+    if not url:
+        return None
     try:
         if any(site in domain for site in special_sites):
             if "youtube.com" in domain or "youtu.be" in domain:
                 text=await get_yt_transcript(url)
-                return {"url":url, "text":text}
-            else:
-                continue
+                return {"text":text, "domain":domain, "data":item.get("data"), "category":item.get("category")}
         else:
-            html=fetch_page(session, url)
+            html=await fetch_page(session, url)
             text=html_cleaner(html)
             if is_blocked(html, config.get("block_markers",[])) or len(text)<300:
                 html=await fetch_page_adv(url, config)
                 text=html_cleaner(html)
             if len(text)>300:
-                return {"url":url, "text":text}
+                return {"text":text, "domain":domain, "data":item.get("data"), "category":item.get("category")}
     except Exception as e:
         print(f"Error {name} in {url}: {e}")
         return None
     
-async def run_agents(links, query, config):
+async def run_agents(items, query, config):
     async with aiohttp.ClientSession(headers=get_random_headers(config)) as session:
         await session.get("https://duckduckgo.com")
         tasks=[]
-        for i, url in enumerate(links):
-            tasks.append(agent_worker(f"worker_{i+1}", url, query, session, config"))
-        result=await asyncion.gather(*tasks)
+        for i, item in enumerate(items):
+            tasks.append(agent_worker(f"worker_{i+1}", item, query, session, config))
+        result=await asyncio.gather(*tasks)
         return [r for r in result if r]
 
 async def browser_answer(query):
     config, config_path=browser_config()
     links=await search(query, config)
+    print(links)
     ranked=rank_list(links, query, config)
+    print(ranked)
     if not ranked:
         return "Search Error"
     pages_data=await run_agents(ranked, query, config)
     print(pages_data)
     if not pages_data:
         return "Cant get data from sites"
-    for i, data in enumerate(pages_data):
-        url=data['url']
-        text=data['text']
+    for item in pages_data:
+        domain=item["domain"]
+        text=item["text"]
         site_score, scored_text=await vector_rating(query, text)
-        update_reputation(url, site_score, config, config_path)
-        to_sum_context.append({"url":url, "text":scored_text})
+        item["score"]=site_score
+        update_reputation(domain, site_score, config, config_path)
+        to_sum_context.append({"text":text, "domain":domain})
     context=optimize_context(to_sum_context, config)
     final_context=extract_relevant(context, query)
     return final_context

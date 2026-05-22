@@ -85,10 +85,10 @@ def dir_existing(dir_name:str)->Path:
 
     return path
 
-def saving(path, cat_name, key=None, text):
+def saving(path, text, cat_name, key=None):
     try:
         if path.exists():
-            with opne(path, "r", encoding='utf-8') as f:
+            with open(path, "r", encoding='utf-8') as f:
                 try: data=json.load(f)
                 except json.JSONDecodeError: print("Json is incorrect")
         else: data={}
@@ -98,3 +98,5 @@ def saving(path, cat_name, key=None, text):
         else: data[cat_name][key]=text
         with open(path, "w", encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(e)

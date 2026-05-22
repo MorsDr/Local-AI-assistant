@@ -25,8 +25,8 @@
     "Upgrade-Insecure-Requests": "1",
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
-    "Sec-Feth-Site": "none",
-    "Sec-Feth-User": "?1",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1"
   },
   "ranking_weights":{
     "trust_bonus":2.0,

@@ -1,4 +1,5 @@
 import logging
+import traceback
 import psycopg2
 import sys
 from get_system_info import get_hardware_specs
@@ -31,6 +32,16 @@ def log_to_db(prompt, thought, response):
                 cur.execute(query, (datetime.now(), prompt, thought, response, 1))
     except Exception as e:
         print(f"Ошибка БД: {e}")
+
+async def search_commands(user_input):
+    if user_input.startswith('/search '):
+        query=user_input[8:].strip()
+        result=await browser_answer(query)
+        print(f"Search result using '/search' by query: {query}\n{result}")
+        return "|>skip<|"
+    elif user_input.strip() == "/exit":
+        return "|>ext<|"
+    else: return user_input
 
 class AI_System:
     def __init__(self):
@@ -91,6 +102,15 @@ class AI_System:
         self.history.append({'role':'assistant', 'content':response.message.content})
         return response.message.content
 
+async def main_cycle(user_input):
+    logging.info(f"Sending: {result} to router module")
+    plan=await system.router_request(result)
+    logging.info(f"Proccesing tasks from {plan}")
+    extra_context=await system.execute_tasks(plan)
+    logging.info("All data received, sending it to main model to generate final answer")
+    answer=await system.generate_final_answer(result, extra_context)
+    print(f"\nОтвет:\n{answer}\n")
+    
 async def main_loop():
     logging.info("System itialization...")
     system=AI_System()
@@ -101,26 +121,21 @@ async def main_loop():
     while True:
         try:
             user_input=input("You: ")
-            if not user_input.strip():
-                continue
-            if user_input.strip() == "/exit":
-                logging.info("Received command: 'exit'")
-                #save to db
-                break
-            logging.info(f"Sending: {user_input} to router module")
-            plan=await system.router_request(user_input)
-            logging.info(f"Proccesing tasks from {plan}")
-            extra_context=await system.execute_tasks(plan)
-            logging.info("All data received, sending it to main model to generate final answer")
-            answer=await system.generate_final_answer(user_input, extra_context)
-            print(f"\nОтвет:\n{answer}\n")
+            if user_input.startswith('/search'):
+                print("Using '/search' command")
+                query=user_input[8:].strip()
+                print(f"Sending {query} to browser")
+                print(await browser_answer(query))
+            else:
+                await main_cycle(user_input)
         except KeyboardInterrupt:
             logging.info("Keyboard interrupt")
             print("\nSession interrupt. Saving data.....")
             #save to db
             break
         except Exception as e:
-            logging.info(f"Unexpected error: {e}")
+            logging.error(f"Unexpected error: {e}")
+            logging.error(traceback.format_exc())
             print("Working error. For more information check log file")
 
 
