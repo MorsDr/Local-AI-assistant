@@ -130,25 +130,36 @@ def smart_trim(text, query, target_len):
     return result[:target_len] if result else text[:target_len]
 
 def optimize_context(scored_data, config):
+#Arguments type: scored_data=[{"url":url address, "domain":domain, "text":full text w/o split, "sentences":[{"score": float num; rating this sentences, "text":one sentence}, repetition acording to a pattern], "data":data, format:year-month-day, "category":domain category}, {repetition according to a pattern up to len equal max_links variable(default value equal 10)}]
     max_total=config.get("max_text_len", 30000)
     total_len=sum(len(d['text']) for d in scored_data)
+    def clean_out(data_list):
+        cleaned=[]
+        for item in data_list:
+            new_item=item.copy()
+            new_item.pop("sentences", None)
+            cleaned.append(new_item)
+        return cleaned
+    
     if total_len<=max_total:
-        return scored_data
+        return clean_out(scored_data)
     steps=[(0.30,len(scored_data)), (0.40, len(scored_data)), (0.50, 7), (0.55, 5), (0.65, 3)]
     for threshold, count in steps:
         optimized_data=[]
         start_idx=max(0, len(scored_data) - count)
         for i, item in enumerate(scored_data):
-            if i>=start_idx:
-               filtered=[s['text'] for s in item['text'] if s['score'] >= threshold]
-               text=" ".join(filtered)
+            current_item=item.copy()
+            if i>=start_idx and "sentences" in current_item:
+                filtered=[s['text'] for s in current_item['sentences'] if s.get("score", 0.0) >= threshold]
+                current_item["text"]=" ".join(filtered)
             else:
-                text=" ".join([s['text'] for s in site['text']])
-            optimized_data.append(text)
-        current_result=" ".join(optimized_data)
-        if len(current_result) <= max_total:
-            return current_result 
-    return current_result[:max_total]
+                current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])\
+            current_item.pop("sentences", None)
+            optimized_data.append(current_item)
+        current_len=sum(len(d['text']) for d in optimized_data)
+        if current_len <= max_total:
+            return optimized_data 
+    return optimized_data
     
 def score_calc(items, query, config):
     weights=config.get("ranking_weights", {})
@@ -192,7 +203,7 @@ def score_calc(items, query, config):
                 if spec_link in url:
                     final_score*=weights.get("type_weights",{}).get("video", 0.6)
                     break
-            formatted_item={"url":url, "domain":domain, "category":category, "data":found_date.strftime("%Y-%m-%d") if found_date else None}
+            formatted_item={"url":url, "domain":domain, "category":category, "site_rate":final_score "data":found_date.strftime("%Y-%m-%d") if found_date else None}
             output_res.append(formatted_item)
     return output_res  
         
@@ -200,7 +211,7 @@ def rank_list(items, query, config):
     threshold=config.get("ranking_weights",{}).get("threshold", 1.2)
     scored_items=score_calc(items, query, config)
     max_link=10
-    filtered_items-[item for item in scored_items if item["score"] >= threshold]
+    filtered_items-[item for item in scored_items if item["site_rate"] >= threshold]
     filtered_items.sort(key=lambda x:x["iternal_score"], reverse=True)
     return filtered_items[:max_link]
 
@@ -244,11 +255,12 @@ def update_reputation(url, score, config, config_path):
     db[domain]["category"]=new_cat
     saving(config_path, db, "domain_reputation", None)
     
-async def extract_relevant(text, query):
-    prompt=f"""Extract useful information based on query. Delete duplicates in text. Do it without extra text from yourself.
-        Query:\n{query}
-        Text:\n{text}"""
-    return await appeal_to_ollama(prompt, tokens=32000)
+async def extract_relevant(items, query, config):
+    input_data={item["url"]:item["text"] for item in items if len(item.get("text", "")) > 100}
+    input_json_str=json.dumps(input_data, ensure_ascii=False)
+    prompt=f"""{config.get("ai_prompt", "")}"""
+    try:
+        response=await 
 
 async def agent_worker(name, item, query, session, config):
     special_sites=config.get("special_treatment", [])
@@ -268,7 +280,7 @@ async def agent_worker(name, item, query, session, config):
                 html=await fetch_page_adv(url, config)
                 text=html_cleaner(html)
             if len(text)>300:
-                return {"text":text, "domain":domain, "data":item.get("data"), "category":item.get("category")}
+                return {"url":url, "text":text, "domain":domain, "data":item.get("data"), "category":item.get("category")}
     except Exception as e:
         print(f"Error {name} in {url}: {e}")
         return None
@@ -279,11 +291,12 @@ async def run_agents(items, query, config):
         tasks=[]
         for i, item in enumerate(items):
             tasks.append(agent_worker(f"worker_{i+1}", item, query, session, config))
-        result=await asyncio.gather(*tasks)
+''        result=await asyncio.gather(*tasks)
         return [r for r in result if r]
 
 async def browser_answer(query):
     config, config_path=browser_config()
+    raw_context=[]
     links=await search(query, config)
     print(links)
     ranked=rank_list(links, query, config)
@@ -298,9 +311,10 @@ async def browser_answer(query):
         domain=item["domain"]
         text=item["text"]
         site_score, scored_text=await vector_rating(query, text)
-        item["score"]=site_score
+        #Return type: site_score=1.2; scored_text=[{"score":float value, "text":sentence}, {"score":float value, "text":sentence}.....(until the sentences in the text run out)]
         update_reputation(domain, site_score, config, config_path)
-        to_sum_context.append({"text":text, "domain":domain})
-    context=optimize_context(to_sum_context, config)
-    final_context=extract_relevant(context, query)
+        tmp_data={"url":item["url"], "domain":domain, "text":text, "sentences":scored_text, "site_score":site_score, "data":item["data"], "category":item["category"]}
+        raw_context.append(tmp_data)
+    context=optimize_context(raw_context, config)
+    final_context=extract_relevant(context, query, config)
     return final_context
