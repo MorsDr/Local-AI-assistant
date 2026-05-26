@@ -1,3 +1,4 @@
+from ollama import AsyncClient
 import numpy as np
 import aiohttp
 import re
@@ -153,7 +154,7 @@ def optimize_context(scored_data, config):
                 filtered=[s['text'] for s in current_item['sentences'] if s.get("score", 0.0) >= threshold]
                 current_item["text"]=" ".join(filtered)
             else:
-                current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])\
+                current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])
             current_item.pop("sentences", None)
             optimized_data.append(current_item)
         current_len=sum(len(d['text']) for d in optimized_data)
@@ -162,6 +163,30 @@ def optimize_context(scored_data, config):
     return optimized_data
     
 def score_calc(items, query, config):
+    def date_scoring(found_date, now, tag_score):
+        print("Date found")
+        days_diff=(now - found_date).days
+        month_diff=(now.year - found_date.year)*12+now.month - found_date.month
+        if found_date.year == now.year:
+            score+=1.0
+        else:
+            years_diff=now.year - found_date.year
+            score+=max(0, 1.0 - (years_diff*0.3/impact))
+        if month_diff<12:
+            month_bonus=max(0, 2.0 - (month_diff*0.15))
+            score+=month_bonus*impact
+        if days_diff<=30:
+            day_bonus=max(0, 3.0 - (days_diff*0.15))
+            score+=day_bonus*impact
+        final_score=(tag_score+score)*impact
+        print(f"score after date func: {final_score}")
+        for spec_link in espec_links:
+            if spec_link in url:
+                final_score*=weights.get("type_weights",{}).get("video", 0.6)
+                print(f"score if date and youtube: {final_score}")
+                break
+            return final_score
+        
     weights=config.get("ranking_weights", {})
     espec_links=config.get("special_treatment",[])    
     query_words=set(re.findall(r'\w{3,}', query.lower()))
@@ -169,9 +194,10 @@ def score_calc(items, query, config):
     output_res=[]
     for item in items:
         score=0.0
-        url=items.get("link","").lower()
-        title=items.get("title","").lower()
-        snippet=items.get("snippet","").lower()
+        final_score=0.0
+        url=item.get("link","").lower()
+        title=item.get("title","").lower()
+        snippet=item.get("snippet","").lower()
         try:
             domain=urlparse(url).netloc
         except Exception:
@@ -180,38 +206,51 @@ def score_calc(items, query, config):
         impact=config.get("trust_scores",{}).get(category, 0.5)
         matches=sum(1 for word in query_words if word in (title+" "+snippet))
         tag_score=matches*weights.get("tag_match_weight", 1.0)
-        found_date=dateparser.parse(title+" "+snippet, settings={'RELATIVE_BASE':now})
+        found_date=dateparser.parse(title+" "+snippet, settings={'RELATIVE_BASE':now, 'PREFER_DATES_FROM':'past'})
+        print(category, impact, matches, tag_score, found_date)
         if not found_date:
-            return (tag_score+0.5)*impact
+            try:
+                print("Date not found")
+                from dateparser.search import search_dates
+                result=search_dates(title+" "+snippet, languages=['ru', 'en'])
+                if result:
+                    found_date=result[0][1]
+                    final_score=date_scoring(found_date, now, tag_score)
+                else:
+                    final_score+=(tag_score+1.5)*impact
+                    print(f"score if not date: {final_score}")
+                    for spec_link in espec_links:
+                        if spec_link in url:
+                            final_score*=weights.get("type_weights",{}).get("video", 0.6)
+                            print(f"score if not date and youtube: {final_score}")
+                            break
+            except Exception as e:
+                print(f"Error: {e}")
         else:
-            days_diff=(now - found_date).days
-            month_diff=(now.year - found_date.year)*12+now.month - found_date.month
-            if found_date.year == now.year:
-                score+=1.0
-            else:
-                years_diff=now.year - found_date.year
-                score+=max(0, 1.0 - (years_diff*0.3/impact))
-            if month_diff<12:
-                month_bonus=max(0, 2.0 - (month_diff*0.15))
-                score+=month_bonus*impact
-
-            if days_diff<=30:
-                day_bonus=max(0, 3.0 - (days_diff*0.15))
-                score+=day_bonus*impact
-            final_score=(tag_score+score)*impact
-            for spec_link in espec_links:
-                if spec_link in url:
-                    final_score*=weights.get("type_weights",{}).get("video", 0.6)
-                    break
-            formatted_item={"url":url, "domain":domain, "category":category, "site_rate":final_score "data":found_date.strftime("%Y-%m-%d") if found_date else None}
-            output_res.append(formatted_item)
-    return output_res  
+            final_score=date_scoring(found_date, now, tag_score)
+        
+        print(f"score before save: {final_score}")
+        formatted_item={"url":url, "domain":domain, "category":category, "site_rate":final_score, "date":found_date.strftime("%Y-%m-%d") if found_date else None}
+        output_res.append(formatted_item)
+    return output_res
         
 def rank_list(items, query, config):
     threshold=config.get("ranking_weights",{}).get("threshold", 1.2)
-    scored_items=score_calc(items, query, config)
+    ignored=config.get("ignored_domains", [])
+    pre_filtered=[]
+    for item in items:
+        url=item.get("link", "").lower()
+        try:
+            domain=urlparse(url).netloc.lower()
+        except Exception:
+            domain=""
+        if any(black_domain in domain for black_domain in ignored):
+            continue
+        pre_filtered.append(item)
+    scored_items=score_calc(pre_filtered, query, config)
+    print(scored_items)
     max_link=10
-    filtered_items-[item for item in scored_items if item["site_rate"] >= threshold]
+    filtered_items=[item for item in scored_items if item["site_rate"] >= threshold]
     filtered_items.sort(key=lambda x:x["iternal_score"], reverse=True)
     return filtered_items[:max_link]
 
@@ -255,12 +294,21 @@ def update_reputation(url, score, config, config_path):
     db[domain]["category"]=new_cat
     saving(config_path, db, "domain_reputation", None)
     
-async def extract_relevant(items, query, config):
-    input_data={item["url"]:item["text"] for item in items if len(item.get("text", "")) > 100}
+async def extract_relevant(datas_pool, query, config):
+    input_data={item["url"]:item["text"] for item in datas_pool if len(item.get("text", "")) > 100}
     input_json_str=json.dumps(input_data, ensure_ascii=False)
     prompt=f"""{config.get("ai_prompt", "")}"""
     try:
-        response=await 
+        response=await ollama.AsyncClient().generate(model=main, prompt=prompt, format=json, option={"temperature":0.1})
+        cleaned_json=response.get('response', '').strip()
+        final_data=json.load(cleaned_json)
+        for item in datas_pool:
+            url=item.get("url")
+        if url in final_data:
+            item["text"]=final_data[url]
+    except Exception as e:
+        print(f"Error: {e}")
+    return datas_pool
 
 async def agent_worker(name, item, query, session, config):
     special_sites=config.get("special_treatment", [])
@@ -291,14 +339,13 @@ async def run_agents(items, query, config):
         tasks=[]
         for i, item in enumerate(items):
             tasks.append(agent_worker(f"worker_{i+1}", item, query, session, config))
-''        result=await asyncio.gather(*tasks)
+        result=await asyncio.gather(*tasks)
         return [r for r in result if r]
 
 async def browser_answer(query):
     config, config_path=browser_config()
     raw_context=[]
     links=await search(query, config)
-    print(links)
     ranked=rank_list(links, query, config)
     print(ranked)
     if not ranked:

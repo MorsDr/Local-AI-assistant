@@ -38,7 +38,8 @@
       "short_video":0.3,
       "social":0.4
     },
-    "threshold":1.2
+    "threshold":1.2,
+    "tag_match_weight":2.5
   },
   "block_markers":[
    "captcha",
@@ -51,8 +52,8 @@
    "подтвердите, что вы не робот",
    "проверка безопасности"
   ],
-  "special_treatment":[
-   "youtube.com", "youtu.be",
+  "special_treatment":["youtube.com", "youtu.be"],
+  "ignored_domains":[
    "tiktok.com",
    "instagram.com",
    "facebook.com",

@@ -1,0 +1,12 @@
+[2026-05-26 17:16:52,133] INFO: System itialization...
+[2026-05-26 17:16:52,138] INFO: System initialized. Main model: codestral; Router model: qwen2.5:1.5b
+[2026-05-26 17:17:07,586] INFO: response: https://www.google.com/search?q=FNAF&filter=1&start=0&hl=en-US&lr=lang_en&cr=countryUS 200
+[2026-05-26 17:17:07,605] INFO: response: https://html.duckduckgo.com/html/ 202
+[2026-05-26 17:17:07,641] INFO: response: https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=FNAF 200
+[2026-05-26 17:17:07,827] INFO: response: https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&titles=FNAF&explaintext=0&exintro=0&redirects=1 200
+[2026-05-26 17:17:07,830] INFO: response: https://grokipedia.com/api/typeahead?query=FNAF&limit=1 200
+[2026-05-26 17:17:08,065] INFO: response: https://yandex.by/search/site/?text=FNAF&web=1&searchid=4001661&rdrnd=747490&lr=155&redircnt=1779805027.1 200
+[2026-05-26 17:17:08,179] INFO: response: https://www.mojeek.com/search?q=FNAF 200
+[2026-05-26 17:17:08,680] INFO: response: https://search.brave.com/search?q=FNAF&source=web 200
+[2026-05-26 17:17:09,096] INFO: response: https://search.yahoo.com/search;_ylt=13xNt_NFiVYDJUIe8RLmb10D;_ylu=SGNDRtlkWnClz5jDdn5AZu8SrHbiao5Fcz65WpKti0QbtmU?p=FNAF 200
+[2026-05-26 17:18:30,880] INFO: Keyboard interrupt
