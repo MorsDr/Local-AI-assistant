@@ -20,7 +20,7 @@ def get_random_headers(config):
     current_ua=ua_generator.random
     headers["User-Agent"]=current_ua
     version_match=re.search(r'Chrome/(\d+)', current_ua)
-    if verion_match:
+    if version_match:
         ver=version_match.group(1)
         headers["sec-ch-ua"]=f'"Not_ABrand";v="8","Chromium";v="{ver}","Google Chrome";v="{ver}"'
         headers["sec-ch-ua-mobile"]="?0"
@@ -83,7 +83,9 @@ async def fetch_page_adv(url,config):
     try:
         async with async_playwright() as p:
             browser=await p.chromium.launch(headless=True)
-            context=await browser.new_context(user_agent=get_random_headers(config), viewport={'width':1920, 'height':1080})
+            full_headers=get_random_headers(config)
+            ua_string=full_headers.get("User-Agent", "Mozilla/5.0(Windows NT 10,0; Win64; x64) AppleWebKit/537.36")
+            context=await browser.new_context(user_agent=ua_string, extra_http_headers=full_headers, viewport={'width':1920, 'height':1080})
             page=await context.new_page()
             await page.route("**/*. {png,jpg,jpeg,svg,webp,gif,woff,woff2}", lambda route:route.abort())
             try:
@@ -165,6 +167,7 @@ def optimize_context(scored_data, config):
 def score_calc(items, query, config):
     def date_scoring(found_date, now, tag_score):
         print("Date found")
+        score=0.0
         days_diff=(now - found_date).days
         month_diff=(now.year - found_date.year)*12+now.month - found_date.month
         if found_date.year == now.year:
@@ -185,7 +188,7 @@ def score_calc(items, query, config):
                 final_score*=weights.get("type_weights",{}).get("video", 0.6)
                 print(f"score if date and youtube: {final_score}")
                 break
-            return final_score
+        return final_score
         
     weights=config.get("ranking_weights", {})
     espec_links=config.get("special_treatment",[])    
@@ -193,7 +196,6 @@ def score_calc(items, query, config):
     now=datetime.now()
     output_res=[]
     for item in items:
-        score=0.0
         final_score=0.0
         url=item.get("link","").lower()
         title=item.get("title","").lower()
@@ -207,7 +209,8 @@ def score_calc(items, query, config):
         matches=sum(1 for word in query_words if word in (title+" "+snippet))
         tag_score=matches*weights.get("tag_match_weight", 1.0)
         found_date=dateparser.parse(title+" "+snippet, settings={'RELATIVE_BASE':now, 'PREFER_DATES_FROM':'past'})
-        print(category, impact, matches, tag_score, found_date)
+        print(f"domain: {domain}")
+        print(f"cat: {category} and it impact: {impact}\ntag matches: {matches} and final tag score: {tag_score}\ndate: {found_date}")
         if not found_date:
             try:
                 print("Date not found")
@@ -216,6 +219,7 @@ def score_calc(items, query, config):
                 if result:
                     found_date=result[0][1]
                     final_score=date_scoring(found_date, now, tag_score)
+                    print(f"score if date: {final_score}")
                 else:
                     final_score+=(tag_score+1.5)*impact
                     print(f"score if not date: {final_score}")
@@ -228,10 +232,12 @@ def score_calc(items, query, config):
                 print(f"Error: {e}")
         else:
             final_score=date_scoring(found_date, now, tag_score)
+            print(f"score if date: {final_score}")
         
-        print(f"score before save: {final_score}")
+        print(f"domain: {domain}\nscore before save: {final_score}")
         formatted_item={"url":url, "domain":domain, "category":category, "site_rate":final_score, "date":found_date.strftime("%Y-%m-%d") if found_date else None}
         output_res.append(formatted_item)
+        print("------------------------------------------------------------------------------------------------")
     return output_res
         
 def rank_list(items, query, config):
@@ -251,7 +257,7 @@ def rank_list(items, query, config):
     print(scored_items)
     max_link=10
     filtered_items=[item for item in scored_items if item["site_rate"] >= threshold]
-    filtered_items.sort(key=lambda x:x["iternal_score"], reverse=True)
+    filtered_items.sort(key=lambda x:x["site_rate"], reverse=True)
     return filtered_items[:max_link]
 
 async def get_site_rating(scored_sentences):
@@ -262,17 +268,27 @@ async def get_site_rating(scored_sentences):
     comb_quality=(peak*0.7)+(info_density*0.3)
     return comb_quality
 
-async def vector_rating(text, query):
+async def vector_rating(query, text):
+    print(f"vector_rating get data: {text}")
     sentences=re.split(r'(?<=[.!?])+', text)
     if not sentences: return 0.0, ""
-    q_emb=np.array(ollama.embeddings(model="nomic-embed-text", prompt=query)['embedding'])
+    q_resp=await AsyncClient().embed(model="nomic-embed-text", input=query)
+    print(f"recieved answer from ollama: {q_resp}")
+    q_emb=np.array(q_resp['embeddings'][0])
+    print(f"query embed: {q_emb}")
     scored_sentences=[]
     for s in sentences:
         if len(s)<15:continue
-        res=ollama.embeddings(model="monic-embed-text", prompt=s)
-        s_emb=np.array(res['embedding'])
-        score=np.dot(q_emb, s_emb)/(np.linalg.norm(q_emb)*np.linalg.norm(s_emb))
-        scored_sentences.append({"score":score, "text":s})
+        try:
+            res=await AsyncClient().embed(model="nomic-embed-text", input=s)
+            print(f"recieved answer from ollama: {res}")
+            s_emb=np.array(res['embedding'][0])
+            print(f"sentence embed: {s_emb}")
+            score=np.dot(q_emb, s_emb)/(np.linalg.norm(q_emb)*np.linalg.norm(s_emb))
+            scored_sentences.append({"score":score, "text":s})
+        except Exception as e:
+            print(f"sentence: {s} return error: {e}")
+            continue
     avg_quality=get_site_rating(scored_sentences)
     return avg_quality,scored_sentences
 
@@ -299,7 +315,7 @@ async def extract_relevant(datas_pool, query, config):
     input_json_str=json.dumps(input_data, ensure_ascii=False)
     prompt=f"""{config.get("ai_prompt", "")}"""
     try:
-        response=await ollama.AsyncClient().generate(model=main, prompt=prompt, format=json, option={"temperature":0.1})
+        response=await AsyncClient().generate(model=main, prompt=prompt, format=json, option={"temperature":0.1})
         cleaned_json=response.get('response', '').strip()
         final_data=json.load(cleaned_json)
         for item in datas_pool:
@@ -351,12 +367,12 @@ async def browser_answer(query):
     if not ranked:
         return "Search Error"
     pages_data=await run_agents(ranked, query, config)
-    print(pages_data)
     if not pages_data:
         return "Cant get data from sites"
     for item in pages_data:
         domain=item["domain"]
         text=item["text"]
+        print(f"send data to scoring: {text}\n-------------------------------------------------------------------------------------------------")
         site_score, scored_text=await vector_rating(query, text)
         #Return type: site_score=1.2; scored_text=[{"score":float value, "text":sentence}, {"score":float value, "text":sentence}.....(until the sentences in the text run out)]
         update_reputation(domain, site_score, config, config_path)
