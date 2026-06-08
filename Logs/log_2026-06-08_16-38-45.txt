@@ -1,0 +1,72 @@
+[2026-06-08 16:38:45,833] INFO: System itialization...
+[2026-06-08 16:38:45,837] INFO: System initialized. Main model: codestral; Router model: qwen2.5:1.5b
+[2026-06-08 16:38:56,025] INFO: response: https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=FNAF 200
+[2026-06-08 16:38:56,104] INFO: response: https://www.google.com/search?q=FNAF&filter=1&start=0&hl=en-US&lr=lang_en&cr=countryUS 200
+[2026-06-08 16:38:56,204] INFO: response: https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&titles=FNAF&explaintext=0&exintro=0&redirects=1 200
+[2026-06-08 16:38:56,244] INFO: response: https://search.yahoo.com/search;_ylt=2wQtmsNZmqhQ4YP5CxRk0dbR;_ylu=O2idQU0T5zHuw-Xcwn7KxoLEwlSWzu8ZDWV0pfPDumKx5_U?p=FNAF 200
+[2026-06-08 16:38:56,330] INFO: response: https://search.brave.com/search?q=FNAF&source=web 200
+[2026-06-08 16:38:56,569] INFO: response: https://yandex.by/search/site/?text=FNAF&web=1&searchid=4188336&rdrnd=487440&lr=155&redircnt=1780925935.1 200
+[2026-06-08 16:39:00,832] INFO: Error in engine grokipedia: TimeoutException(TimeoutError('error sending request for url (https://grokipedia.com/api/typeahead?query=FNAF&limit=1)', 'https://grokipedia.com/api/typeahead?query=FNAF&limit=1'))
+[2026-06-08 16:39:01,683] INFO: response: https://www.mojeek.com/search?q=FNAF 200
+[2026-06-08 16:39:03,798] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:04,591] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:04,596] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:04,644] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:04,651] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:04,906] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:04,982] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:04,989] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:05,028] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:05,089] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:05,343] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-06-08 16:39:12,064] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,124] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,159] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,189] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,218] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,247] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,275] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,303] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,331] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,360] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,388] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,416] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,448] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,476] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,505] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,533] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,561] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,589] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,616] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,645] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,673] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,701] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,733] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,761] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,789] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,816] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,844] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,872] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,900] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,928] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,956] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:12,982] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:13,016] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:13,050] INFO: HTTP Request: POST http://127.0.0.1:11434/api/embed "HTTP/1.1 200 OK"
+[2026-06-08 16:39:13,051] ERROR: Unexpected error: unsupported operand type(s) for /: 'list' and 'int'
+[2026-06-08 16:39:13,051] ERROR: Traceback (most recent call last):
+  File "/mnt/data/ai_helper/scripts/handler.py", line 128, in main_loop
+    print(await browser_answer(query))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/data/ai_helper/scripts/browser_module.py", line 374, in browser_answer
+    site_score, scored_text=await vector_rating(query, text)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/data/ai_helper/scripts/browser_module.py", line 290, in vector_rating
+    avg_quality=get_site_rating(scored_sentences)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/data/ai_helper/scripts/browser_module.py", line 268, in get_site_rating
+    peak=sum(sorted(all_grades, reverse=True)[:5]/5)
+             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~
+TypeError: unsupported operand type(s) for /: 'list' and 'int'
+
+[2026-06-08 16:39:44,826] INFO: Keyboard interrupt

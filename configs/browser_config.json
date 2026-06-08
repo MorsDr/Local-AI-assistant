@@ -1,69 +1,95 @@
 {
-  "official_domains":[
-    "python.org",
-    "pytorch.org",
-    "tensorflow.org",
-    "openai.com"
+    "official_domains": [
+        "python.org",
+        "pytorch.org",
+        "tensorflow.org",
+        "openai.com"
     ],
-  "trust_scores": {
-    "official": 1.2,
-    "docs": 1.1,
-    "trusted": 1.0,
-    "community": 0.8,
-    "other": 0.6
-  },
-  "limits": {
-    "max_links": 10,
-    "agents": 5
-  },
-  "headers_template":{
-    "Accept":"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "DNT": "1",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1"
-  },
-  "ranking_weights":{
-    "trust_bonus":2.0,
-    "recency_weight":1.5,
-    "tag_match_weight":1.0,
-    "type_weights":{
-      "article":1.0,
-      "video":0.6,
-      "short_video":0.3,
-      "social":0.4
+    "trust_scores": {
+        "official": 1.2,
+        "docs": 1.1,
+        "trusted": 1.0,
+        "community": 0.8,
+        "other": 0.6
     },
-    "threshold":1.2,
-    "tag_match_weight":2.5
-  },
-  "block_markers":[
-   "captcha",
-   "cloudflare",
-   "ddos-protection",
-   "robot check",
-   "access denied",
-   "challenge-running",
-   "forbidden",
-   "подтвердите, что вы не робот",
-   "проверка безопасности"
-  ],
-  "special_treatment":["youtube.com", "youtu.be"],
-  "ignored_domains":[
-   "tiktok.com",
-   "instagram.com",
-   "facebook.com",
-   "vimeo.com",
-   "rutube.ru",
-   "skipvids.com",
-   "hd2k.ru",
-   "vk.com", "vk.ru"
-  ],
-  "max_text_len":30000,
-  "trim_limits":[1000,1000,1500,2000,2500,3000,4000,5000,5500,5500],
-  "ai_prompt":"You are a context deduplication module. Your task is to process the following JSON data containing website URLs as keys and their text content as values, based on the user query: {query}.Instructions: 1. Compare the texts across ALL websites. 2. Remove any cross-document duplicate paragraphs, redundant plagiarized info, and fluff. Keep unique data and key facts. 3. Return the response STRICTLY as a valid JSON object with the exact same URL keys. Modify only the text inside the values. 4. Do NOT wrap the output in markdown code blocks (e.g., do NOT use ```json). Return raw JSON only. Input Data: {input_json_str}"
+    "limits": {
+        "max_links": 10,
+        "agents": 5
+    },
+    "headers_template": {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1"
+    },
+    "ranking_weights": {
+        "trust_bonus": 2.0,
+        "recency_weight": 1.5,
+        "tag_match_weight": 2.5,
+        "type_weights": {
+            "article": 1.0,
+            "video": 0.6,
+            "short_video": 0.3,
+            "social": 0.4
+        },
+        "threshold": 1.2
+    },
+    "block_markers": [
+        "captcha",
+        "cloudflare",
+        "ddos-protection",
+        "robot check",
+        "access denied",
+        "challenge-running",
+        "forbidden",
+        "подтвердите, что вы не робот",
+        "проверка безопасности"
+    ],
+    "special_treatment": [
+        "youtube.com",
+        "youtu.be"
+    ],
+    "ignored_domains": [
+        "tiktok.com",
+        "instagram.com",
+        "facebook.com",
+        "vimeo.com",
+        "rutube.ru",
+        "skipvids.com",
+        "hd2k.ru",
+        "vk.com",
+        "vk.ru"
+    ],
+    "max_text_len": 30000,
+    "trim_limits": [
+        1000,
+        1000,
+        1500,
+        2000,
+        2500,
+        3000,
+        4000,
+        5000,
+        5500,
+        5500
+    ],
+    "ai_prompt": "You are a context deduplication module. Your task is to process the following JSON data containing website URLs as keys and their text content as values, based on the user query: {query}.Instructions: 1. Compare the texts across ALL websites. 2. Remove any cross-document duplicate paragraphs, redundant plagiarized info, and fluff. Keep unique data and key facts. 3. Return the response STRICTLY as a valid JSON object with the exact same URL keys. Modify only the text inside the values. 4. Do NOT wrap the output in markdown code blocks (e.g., do NOT use ```json). Return raw JSON only. Input Data: {input_json_str}",
+    "domain_reputation": {
+        "": {
+            "category": "shady",
+            "history": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ]
+        }
+    }
 }

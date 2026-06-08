@@ -153,7 +153,7 @@ def optimize_context(scored_data, config):
         for i, item in enumerate(scored_data):
             current_item=item.copy()
             if i>=start_idx and "sentences" in current_item:
-                filtered=[s['text'] for s in current_item['sentences'] if s.get("score", 0.0) >= threshold]
+                filtered=[s['text'] for s in current_item['sentences'] if float(s.get("score", 0.0)) >= threshold]
                 current_item["text"]=" ".join(filtered)
             else:
                 current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])
@@ -260,31 +260,31 @@ def rank_list(items, query, config):
     filtered_items.sort(key=lambda x:x["site_rate"], reverse=True)
     return filtered_items[:max_link]
 
-async def get_site_rating(scored_sentences):
+def get_site_rating(scored_sentences):
     if not scored_sentences: return 0.0
-    all_grades=[s['score'] for s in scored_sentences]
-    peak=sum(sorted(all_grades, reverse=True)[:5]/5)
-    info_density=sum(all_grades)/len(all_grades)
+    print(scored_sentences)
+    all_grades=np.array([s['score'] for s in scored_sentences], dtype=np.float64)
+    print(all_grades)
+    sorted_grades=np.sort(all_grades)[::-1]
+    top_grades=sorted_grades[:5]
+    peak=top_grades.mean() if top_grades.size > 0 else 0.0
+    info_density=all_grades.mean() if all_grades.size > 0 else 0.0
     comb_quality=(peak*0.7)+(info_density*0.3)
-    return comb_quality
+    return comb_quality.item()
 
 async def vector_rating(query, text):
-    print(f"vector_rating get data: {text}")
     sentences=re.split(r'(?<=[.!?])+', text)
     if not sentences: return 0.0, ""
     q_resp=await AsyncClient().embed(model="nomic-embed-text", input=query)
-    print(f"recieved answer from ollama: {q_resp}")
     q_emb=np.array(q_resp['embeddings'][0])
-    print(f"query embed: {q_emb}")
     scored_sentences=[]
     for s in sentences:
         if len(s)<15:continue
         try:
             res=await AsyncClient().embed(model="nomic-embed-text", input=s)
-            print(f"recieved answer from ollama: {res}")
-            s_emb=np.array(res['embedding'][0])
-            print(f"sentence embed: {s_emb}")
+            s_emb=np.array(res['embeddings'][0])
             score=np.dot(q_emb, s_emb)/(np.linalg.norm(q_emb)*np.linalg.norm(s_emb))
+            print(f"score: {score}; sentence: {s}")
             scored_sentences.append({"score":score, "text":s})
         except Exception as e:
             print(f"sentence: {s} return error: {e}")
@@ -295,7 +295,7 @@ async def vector_rating(query, text):
 def update_reputation(url, score, config, config_path):
     domain=urlparse(url).netloc.lower().replace('www.', '')
     if domain in config.get("official_domains", []):return
-    db=config["domain_reputation"]
+    db=config.get("domain_reputation", {})
     if domain not in db:
         db[domain]={"category":"neutral", "history":[]}
     history=db[domain]["history"]
@@ -315,7 +315,7 @@ async def extract_relevant(datas_pool, query, config):
     input_json_str=json.dumps(input_data, ensure_ascii=False)
     prompt=f"""{config.get("ai_prompt", "")}"""
     try:
-        response=await AsyncClient().generate(model=main, prompt=prompt, format=json, option={"temperature":0.1})
+        response=await AsyncClient().generate(model=worker, prompt=prompt, format=json, option={"temperature":0.1})
         cleaned_json=response.get('response', '').strip()
         final_data=json.load(cleaned_json)
         for item in datas_pool:
@@ -379,5 +379,5 @@ async def browser_answer(query):
         tmp_data={"url":item["url"], "domain":domain, "text":text, "sentences":scored_text, "site_score":site_score, "data":item["data"], "category":item["category"]}
         raw_context.append(tmp_data)
     context=optimize_context(raw_context, config)
-    final_context=extract_relevant(context, query, config)
+    final_context=await extract_relevant(context, query, config)
     return final_context
