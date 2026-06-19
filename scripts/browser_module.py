@@ -309,21 +309,57 @@ def update_reputation(url, score, config, config_path):
     else: new_cat="shady"
     db[domain]["category"]=new_cat
     saving(config_path, db, "domain_reputation", None)
+
+async def extract_relevant_v2(datas_pool, query, config):
+    input_data={item["url"]:item["text"] for item in datas_pool if len(item.get("text", "")) > 100}
+    input_json_str=json.dumps(input_data, ensure_ascii=False)
+    raw_prompt=config.get("ai_prompt", "Extract relevant data and delete duplicates")
+    try:
+        system_prompt=raw_prompt.format(query=query)
+    except KeyError as ke:
+        print(f"prompt placeholders: {ke}")
+        system_prompt=raw_prompt
+
+    try:
+        response=await AsyncClient().chat(model="worker", messages=[{"role":"system", "content":system_prompt}, {"role":"user", "content":f"JSON data to process:\n{input_json_str}"}], format="json", options={"temperature":0.1, "num_predict":4096})
+        cleaned_json=response.get('message', {}).get('content', '').strip()
+        if not cleaned_json:
+            print("Model reeturn empty string")
+            return datas_pool
+        final_data=json.loads(cleaned_json)
+        for item in datas_pool:
+            url=item.get("url")
+            if url in final_data:
+                item["text"]=final_data["url"]
+    except json.JSONDecodeError as jde:
+        print(f"JSON error: {jde}")
+        try:
+            fixed_json=cleaned_json.replace('\n', '\\n').replace('\r', '\\r')
+            if fixed_json.startswith('\\n'): fixed_json=fixed_json[2:]
+            final_data=json.loads(fixed_json)
+        except Exception as e:
+            print(f"Attempt to fix json failed: {e}")
+            print(cleaned_json[:500])
+    except Exception as e:
+        print(f"Error in extract_relevant_v2: {e}")
+    return datas_pool
     
 async def extract_relevant(datas_pool, query, config):
     input_data={item["url"]:item["text"] for item in datas_pool if len(item.get("text", "")) > 100}
     input_json_str=json.dumps(input_data, ensure_ascii=False)
-    prompt=f"""{config.get("ai_prompt", "")}"""
+    system_prompt=config.get("ai_prompt", "")
+    prompt=system_prompt.format(query=query, input_json_str=input_json_str)
+    print(prompt)
     try:
-        response=await AsyncClient().generate(model=worker, prompt=prompt, format=json, option={"temperature":0.1})
+        response=await AsyncClient().generate(model="worker", prompt=prompt, format="json", options={"temperature":0.1})
         cleaned_json=response.get('response', '').strip()
-        final_data=json.load(cleaned_json)
+        final_data=json.loads(cleaned_json)
         for item in datas_pool:
             url=item.get("url")
         if url in final_data:
             item["text"]=final_data[url]
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"extract_relevant func Error: {e}")
     return datas_pool
 
 async def agent_worker(name, item, query, session, config):
@@ -379,5 +415,5 @@ async def browser_answer(query):
         tmp_data={"url":item["url"], "domain":domain, "text":text, "sentences":scored_text, "site_score":site_score, "data":item["data"], "category":item["category"]}
         raw_context.append(tmp_data)
     context=optimize_context(raw_context, config)
-    final_context=await extract_relevant(context, query, config)
+    final_context=await extract_relevant_v2(context, query, config)
     return final_context
