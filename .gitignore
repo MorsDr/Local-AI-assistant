@@ -11,3 +11,6 @@ scripts/.venv/
 *.swp
 .DS_Store
 sql_database/
+.aider*
+CONVENTIONS.md
+Logs/*
