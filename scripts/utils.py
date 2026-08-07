@@ -1,5 +1,6 @@
 import aiohttp
 import hashlib
+import re
 from pathlib import Path
 from bs4 import BeautifulSoup
 import json
@@ -13,6 +14,8 @@ def html_cleaner(raw_text):
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
     clean_text=soup.get_text(separator=' ')
+    clean_text=re.sub(r'[\U00010000-\U0010ffff]', '', clean_text)
+    clean_text=re.sub(r'[\\|&$#√§∆✓™®©¢₽£€]', '', clean_text)
     lines=[line.strip() for line in clean_text.splitlines() if line.strip()]
     return " ".join(lines)
 

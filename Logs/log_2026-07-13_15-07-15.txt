@@ -1,0 +1,16 @@
+[2026-07-13 15:07:15,887] INFO: System itialization...
+[2026-07-13 15:07:15,891] INFO: System initialized. Main model: codestral; Router model: qwen2.5:1.5b
+[2026-07-13 15:07:23,327] INFO: response: https://html.duckduckgo.com/html/ 202
+[2026-07-13 15:07:23,329] INFO: response: https://en.wikipedia.org/w/api.php?action=opensearch&profile=fuzzy&limit=1&search=FNAF 200
+[2026-07-13 15:07:23,350] INFO: response: https://www.mojeek.com/search?q=FNAF 200
+[2026-07-13 15:07:23,455] INFO: response: https://search.yahoo.com/search;_ylt=nm7xn056qVAGfKiguVVLs71e;_ylu=mhtT9Mm4jNxCYleBSgzp_wfRPdku8isR0xJIbtlf4cvP1dU?p=FNAF 200
+[2026-07-13 15:07:23,499] INFO: response: https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&titles=FNAF&explaintext=0&exintro=0&redirects=1 200
+[2026-07-13 15:07:23,579] INFO: response: https://grokipedia.com/api/typeahead?query=FNAF&limit=1 502
+[2026-07-13 15:07:23,788] INFO: response: https://yandex.by/search/site/?text=FNAF&web=1&searchid=8378919&rdrnd=966173&lr=155&redircnt=1783944443.1 200
+[2026-07-13 15:07:24,169] INFO: response: https://www.google.com/search?q=FNAF&filter=1&start=0&hl=en-US&lr=lang_en&cr=countryUS 200
+[2026-07-13 15:07:24,753] INFO: response: https://search.brave.com/search?q=FNAF&source=web 200
+[2026-07-13 15:07:27,002] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-07-13 15:07:29,011] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-07-13 15:07:29,021] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-07-13 15:07:29,023] WARNING: Error occurred during getting browser(s): random, but was suppressed with fallback.
+[2026-07-13 15:08:16,391] INFO: Keyboard interrupt

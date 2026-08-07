@@ -125,7 +125,8 @@ async def main_loop():
                 print("Using '/search' command")
                 query=user_input[8:].strip()
                 print(f"Sending {query} to browser")
-                print(await browser_answer(query))
+                response=await browser_answer(query)
+                print(f"\n----------------------------------------------------------------------\nBrowser search result on your query: {query}\nResult:\n{response}")
             else:
                 await main_cycle(user_input)
         except KeyboardInterrupt:

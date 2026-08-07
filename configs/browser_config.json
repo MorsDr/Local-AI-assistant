@@ -79,7 +79,7 @@
         5500,
         5500
     ],
-    "ai_prompt": "You are a context deduplication module. Your task is to process the following JSON data containing website URLs as keys and their text content as values, based on the user query: {query}.Instructions: 1. Compare the texts across ALL websites. 2. Remove any cross-document duplicate paragraphs, redundant plagiarized info, and fluff. Keep unique data and key facts. 3. Return the response STRICTLY as a valid JSON object with the exact same URL keys. Modify only the text inside the values. 4. Do NOT wrap the output in markdown code blocks (e.g., do NOT use ```json). Return raw JSON only.",
+    "ai_prompt": "You are an expert data analyst. The original user search query was: {query}. Below is a merged text block compiled from multiple websites based on this query. Your taskis to extract all unique, highly relevant information, synthesize the key facts, and completely eliminate any duplicate data, redundant phrasing, or website fluff. Provide a clean, dense, and well-structured summary of the findings.\n\nMerged Content for Analysis: {text}",
     "domain_reputation": {
         "": {
             "category": "shady",

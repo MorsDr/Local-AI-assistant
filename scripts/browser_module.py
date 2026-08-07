@@ -132,37 +132,64 @@ def smart_trim(text, query, target_len):
     result=" ".join(useful_sentences)
     return result[:target_len] if result else text[:target_len]
 
-def optimize_context(scored_data, config):
+def optimize_context(full_data, config):
 #Arguments type: scored_data=[{"url":url address, "domain":domain, "text":full text w/o split, "sentences":[{"score": float num; rating this sentences, "text":one sentence}, repetition acording to a pattern], "data":data, format:year-month-day, "category":domain category}, {repetition according to a pattern up to len equal max_links variable(default value equal 10)}]
+    print(f"\n\nData to optimize: {full_data}")
     max_total=config.get("max_text_len", 30000)
-    total_len=sum(len(d['text']) for d in scored_data)
+    to_filter=full_data.copy()
+    print(f"\n=======================================================================\ndata to optimize: {to_filter}")
     def clean_out(data_list):
         cleaned=[]
         for item in data_list:
             new_item=item.copy()
             new_item.pop("sentences", None)
             cleaned.append(new_item)
+        print(f"\n\nCleaned data: {cleaned}")
         return cleaned
+
+    def optimization(treshold, count, data):
+        result=[]
+        start_indx=max(0, len(data)-count)
+        for i, item in enumerate(data):
+            current_item=item.copy
+            if i>=start_indx and "sentences" in current_item:
+                filtered=[]
+                for s in current_item['sentences']:
+                    if s.get("score", 0.0) >= treshold:
+                        filtered.append(s["text"])
+                    else:
+                        s.pop(s["text"])
+                current_item.pop("text", None)
+                current_item["text"]="".join(filtered)
+            result.append(current_item)
+        return result
     
-    if total_len<=max_total:
-        return clean_out(scored_data)
-    steps=[(0.30,len(scored_data)), (0.40, len(scored_data)), (0.50, 7), (0.55, 5), (0.65, 3)]
-    for threshold, count in steps:
-        optimized_data=[]
-        start_idx=max(0, len(scored_data) - count)
-        for i, item in enumerate(scored_data):
-            current_item=item.copy()
-            if i>=start_idx and "sentences" in current_item:
-                filtered=[s['text'] for s in current_item['sentences'] if float(s.get("score", 0.0)) >= threshold]
-                current_item["text"]=" ".join(filtered)
-            else:
-                current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])
-            current_item.pop("sentences", None)
-            optimized_data.append(current_item)
-        current_len=sum(len(d['text']) for d in optimized_data)
+    steps=[(0.17, 0), (0.30,len(full_data)), (0.40, len(full_data)), (0.50, 7), (0.55, 5), (0.65, 3)]
+    for treshold, count in steps:
+        current_len=sum(len(s['text']) for s in to_filter)
         if current_len <= max_total:
-            return optimized_data 
-    return optimized_data
+            return clean_out(to_filter)
+        else:
+            to_filter=optimization(treshold, count, to_filter)
+            
+    #for threshold, count in steps:
+        #print(f"\n\nTo big text, sended to cut: {total_len}")
+        #optimized_data=[]
+        #start_idx=max(0, len(scored_data) - count)
+        #for i, item in enumerate(scored_data):
+            #current_item=item.copy()
+            #if i>=start_idx and "sentences" in current_item:
+                #filtered=[s['text'] for s in current_item['sentences'] if float(s.get("score", 0.0)) >= threshold]
+                #current_item["text"]=" ".join(filtered)
+            #else:
+                #current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])
+            #current_item.pop("sentences", None)
+            #optimized_data.append(current_item)
+        #current_len=sum(len(d['text']) for d in optimized_data)
+        #print(f"Current len: {current_len}")
+        #if current_len <= max_total:
+            #print(f"\n\nData after trim: {total_len} \n{optimized_data}")
+            #return optimized_data
     
 def score_calc(items, query, config):
     def date_scoring(found_date, now, tag_score):
@@ -310,57 +337,30 @@ def update_reputation(url, score, config, config_path):
     db[domain]["category"]=new_cat
     saving(config_path, db, "domain_reputation", None)
 
-async def extract_relevant_v2(datas_pool, query, config):
-    input_data={item["url"]:item["text"] for item in datas_pool if len(item.get("text", "")) > 100}
-    input_json_str=json.dumps(input_data, ensure_ascii=False)
-    raw_prompt=config.get("ai_prompt", "Extract relevant data and delete duplicates")
+async def extract_relevant(content, query, config):
+    raw_text=[]
+    for item in content:
+        text=item.get("text", "").strip()
+        if len(text) > 100:
+            raw_text.append(text)
+    if not raw_text:
+        print("No DATA")
+        return ""
+    full_text="".join(raw_text)
+    raw_prompt=config.get("ai_prompt", "Extract relevant.")
     try:
-        system_prompt=raw_prompt.format(query=query)
+        full_prompt=raw_prompt.format(query=query, text=full_text)
     except KeyError as ke:
-        print(f"prompt placeholders: {ke}")
-        system_prompt=raw_prompt
-
+        print(f"Key error or extract prompt error:{ke}")
+        full_prompt=f"{raw_prompt} Text: {full_text}"
     try:
-        response=await AsyncClient().chat(model="worker", messages=[{"role":"system", "content":system_prompt}, {"role":"user", "content":f"JSON data to process:\n{input_json_str}"}], format="json", options={"temperature":0.1, "num_predict":4096})
-        cleaned_json=response.get('message', {}).get('content', '').strip()
-        if not cleaned_json:
-            print("Model reeturn empty string")
-            return datas_pool
-        final_data=json.loads(cleaned_json)
-        for item in datas_pool:
-            url=item.get("url")
-            if url in final_data:
-                item["text"]=final_data["url"]
-    except json.JSONDecodeError as jde:
-        print(f"JSON error: {jde}")
-        try:
-            fixed_json=cleaned_json.replace('\n', '\\n').replace('\r', '\\r')
-            if fixed_json.startswith('\\n'): fixed_json=fixed_json[2:]
-            final_data=json.loads(fixed_json)
-        except Exception as e:
-            print(f"Attempt to fix json failed: {e}")
-            print(cleaned_json[:500])
+        print(f"Extracting relevant information according to query: {query}, text len {len(full_text)}")
+        response=await AsyncClient().generate(model="qwen2.5:14b", prompt=full_prompt, options={"temperature":0.1, "num_cxt":32768})
+        result=response.get('response', '').strip()
+        return result
     except Exception as e:
-        print(f"Error in extract_relevant_v2: {e}")
-    return datas_pool
-    
-async def extract_relevant(datas_pool, query, config):
-    input_data={item["url"]:item["text"] for item in datas_pool if len(item.get("text", "")) > 100}
-    input_json_str=json.dumps(input_data, ensure_ascii=False)
-    system_prompt=config.get("ai_prompt", "")
-    prompt=system_prompt.format(query=query, input_json_str=input_json_str)
-    print(prompt)
-    try:
-        response=await AsyncClient().generate(model="worker", prompt=prompt, format="json", options={"temperature":0.1})
-        cleaned_json=response.get('response', '').strip()
-        final_data=json.loads(cleaned_json)
-        for item in datas_pool:
-            url=item.get("url")
-        if url in final_data:
-            item["text"]=final_data[url]
-    except Exception as e:
-        print(f"extract_relevant func Error: {e}")
-    return datas_pool
+        print(f"AI work error: {e}")
+        return ""
 
 async def agent_worker(name, item, query, session, config):
     special_sites=config.get("special_treatment", [])
@@ -394,7 +394,7 @@ async def run_agents(items, query, config):
         result=await asyncio.gather(*tasks)
         return [r for r in result if r]
 
-async def browser_answer(query):
+async def browser_answer(query, cmd=False):
     config, config_path=browser_config()
     raw_context=[]
     links=await search(query, config)
@@ -415,5 +415,8 @@ async def browser_answer(query):
         tmp_data={"url":item["url"], "domain":domain, "text":text, "sentences":scored_text, "site_score":site_score, "data":item["data"], "category":item["category"]}
         raw_context.append(tmp_data)
     context=optimize_context(raw_context, config)
-    final_context=await extract_relevant_v2(context, query, config)
+    if cmd:
+        final_context=await extract_relevant(context, query, config)
+    else:
+        final_context=context
     return final_context
