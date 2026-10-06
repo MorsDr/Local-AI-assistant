@@ -14,3 +14,4 @@ sql_database/
 .aider*
 CONVENTIONS.md
 Logs/*
+aider_solutions/

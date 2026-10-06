@@ -398,6 +398,7 @@ async def browser_answer(query, cmd=False):
     config, config_path=browser_config()
     raw_context=[]
     links=await search(query, config)
+    print(links)
     ranked=rank_list(links, query, config)
     print(ranked)
     if not ranked:

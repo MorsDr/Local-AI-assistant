@@ -1,13 +1,11 @@
 import logging
 import traceback
-import psycopg2
 import sys
 from get_system_info import get_hardware_specs
 from datetime import datetime, timedelta
 import asyncio
 from browser_module import browser_answer
 import re
-from rag_access import docs_search
 from utils import handler_config, savencheck_specs
 from ollama import AsyncClient
 import json
