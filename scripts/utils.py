@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from bs4 import BeautifulSoup
 import json
+from datetime import datetime
 
 def html_cleaner(raw_text):
     if not raw_text:
@@ -103,3 +104,9 @@ def saving(path, text, cat_name, key=None):
             json.dump(data, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(e)
+
+def get_datetime():
+    date_time=datetime.now()
+    date_now=date_time.date()
+    time_now=date_time.time()
+    return date_now, time_now

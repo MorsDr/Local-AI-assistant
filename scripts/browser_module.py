@@ -4,15 +4,17 @@ import aiohttp
 import re
 from datetime import datetime
 import dateparser
+from dateparser.search import search_dates
 from urllib.parse import urlparse
 import random
 import asyncio
 import json
 from youtube_transcript_api import YouTubeTranscriptApi
-from utils import html_cleaner, browser_config, appeal_to_ollama, saving
+from utils import html_cleaner, browser_config, appeal_to_ollama, saving, get_datetime
 from ddgs import DDGS
 from playwright.async_api import async_playwright
 from fake_useragent import UserAgent
+from lingua import Language, LanguageDetectorBuilder
 
 ua_generator=UserAgent(browsers=['chrome', 'edge'])
 def get_random_headers(config):
@@ -104,264 +106,6 @@ async def fetch_page_adv(url,config):
         print(f"Получить доступ к {url} продвинутым парсером не удалось: {e}")
         return ""
 
-def get_domain_category(url, config):
-    domain=urlparse(url).netloc.lower().replace('www.', '')
-    if domain in config.get("official_domains", []): return "official", 1.0
-    reputation_db=config.get("domain_reputation", {})
-    if domain in reputation_db:
-        category=reputation_db[domain].get("category", "neutral")
-    else: category="neutral"
-    return category
-
-def classify_url(url:str, config):
-    for category, domains in config["sources"].items():
-        for domain in domains:
-            if domain in url:
-                return category
-    return "other"
-
-def smart_trim(text, query, target_len):
-    if len(text) <= target_len:
-        return text
-    sentences=re.split(r'(?<=[.!?])+', text)
-    query_words=set(re.findall(r'\w{3,}',query.lower()))
-    useful_sentences=[]
-    for s in sentences:
-        if any(word in s.lower() for word in query_words):
-            useful_sentences.append(s)
-    result=" ".join(useful_sentences)
-    return result[:target_len] if result else text[:target_len]
-
-def optimize_context(full_data, config):
-#Arguments type: scored_data=[{"url":url address, "domain":domain, "text":full text w/o split, "sentences":[{"score": float num; rating this sentences, "text":one sentence}, repetition acording to a pattern], "data":data, format:year-month-day, "category":domain category}, {repetition according to a pattern up to len equal max_links variable(default value equal 10)}]
-    print(f"\n\nData to optimize: {full_data}")
-    max_total=config.get("max_text_len", 30000)
-    to_filter=full_data.copy()
-    print(f"\n=======================================================================\ndata to optimize: {to_filter}")
-    def clean_out(data_list):
-        cleaned=[]
-        for item in data_list:
-            new_item=item.copy()
-            new_item.pop("sentences", None)
-            cleaned.append(new_item)
-        print(f"\n\nCleaned data: {cleaned}")
-        return cleaned
-
-    def optimization(treshold, count, data):
-        result=[]
-        start_indx=max(0, len(data)-count)
-        for i, item in enumerate(data):
-            current_item=item.copy
-            if i>=start_indx and "sentences" in current_item:
-                filtered=[]
-                for s in current_item['sentences']:
-                    if s.get("score", 0.0) >= treshold:
-                        filtered.append(s["text"])
-                    else:
-                        s.pop(s["text"])
-                current_item.pop("text", None)
-                current_item["text"]="".join(filtered)
-            result.append(current_item)
-        return result
-    
-    steps=[(0.17, 0), (0.30,len(full_data)), (0.40, len(full_data)), (0.50, 7), (0.55, 5), (0.65, 3)]
-    for treshold, count in steps:
-        current_len=sum(len(s['text']) for s in to_filter)
-        if current_len <= max_total:
-            return clean_out(to_filter)
-        else:
-            to_filter=optimization(treshold, count, to_filter)
-            
-    #for threshold, count in steps:
-        #print(f"\n\nTo big text, sended to cut: {total_len}")
-        #optimized_data=[]
-        #start_idx=max(0, len(scored_data) - count)
-        #for i, item in enumerate(scored_data):
-            #current_item=item.copy()
-            #if i>=start_idx and "sentences" in current_item:
-                #filtered=[s['text'] for s in current_item['sentences'] if float(s.get("score", 0.0)) >= threshold]
-                #current_item["text"]=" ".join(filtered)
-            #else:
-                #current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])
-            #current_item.pop("sentences", None)
-            #optimized_data.append(current_item)
-        #current_len=sum(len(d['text']) for d in optimized_data)
-        #print(f"Current len: {current_len}")
-        #if current_len <= max_total:
-            #print(f"\n\nData after trim: {total_len} \n{optimized_data}")
-            #return optimized_data
-    
-def score_calc(items, query, config):
-    def date_scoring(found_date, now, tag_score):
-        print("Date found")
-        score=0.0
-        days_diff=(now - found_date).days
-        month_diff=(now.year - found_date.year)*12+now.month - found_date.month
-        if found_date.year == now.year:
-            score+=1.0
-        else:
-            years_diff=now.year - found_date.year
-            score+=max(0, 1.0 - (years_diff*0.3/impact))
-        if month_diff<12:
-            month_bonus=max(0, 2.0 - (month_diff*0.15))
-            score+=month_bonus*impact
-        if days_diff<=30:
-            day_bonus=max(0, 3.0 - (days_diff*0.15))
-            score+=day_bonus*impact
-        final_score=(tag_score+score)*impact
-        print(f"score after date func: {final_score}")
-        for spec_link in espec_links:
-            if spec_link in url:
-                final_score*=weights.get("type_weights",{}).get("video", 0.6)
-                print(f"score if date and youtube: {final_score}")
-                break
-        return final_score
-        
-    weights=config.get("ranking_weights", {})
-    espec_links=config.get("special_treatment",[])    
-    query_words=set(re.findall(r'\w{3,}', query.lower()))
-    now=datetime.now()
-    output_res=[]
-    for item in items:
-        final_score=0.0
-        url=item.get("link","").lower()
-        title=item.get("title","").lower()
-        snippet=item.get("snippet","").lower()
-        try:
-            domain=urlparse(url).netloc
-        except Exception:
-            domain=""
-        category=get_domain_category(url, config)
-        impact=config.get("trust_scores",{}).get(category, 0.5)
-        matches=sum(1 for word in query_words if word in (title+" "+snippet))
-        tag_score=matches*weights.get("tag_match_weight", 1.0)
-        found_date=dateparser.parse(title+" "+snippet, settings={'RELATIVE_BASE':now, 'PREFER_DATES_FROM':'past'})
-        print(f"domain: {domain}")
-        print(f"cat: {category} and it impact: {impact}\ntag matches: {matches} and final tag score: {tag_score}\ndate: {found_date}")
-        if not found_date:
-            try:
-                print("Date not found")
-                from dateparser.search import search_dates
-                result=search_dates(title+" "+snippet, languages=['ru', 'en'])
-                if result:
-                    found_date=result[0][1]
-                    final_score=date_scoring(found_date, now, tag_score)
-                    print(f"score if date: {final_score}")
-                else:
-                    final_score+=(tag_score+1.5)*impact
-                    print(f"score if not date: {final_score}")
-                    for spec_link in espec_links:
-                        if spec_link in url:
-                            final_score*=weights.get("type_weights",{}).get("video", 0.6)
-                            print(f"score if not date and youtube: {final_score}")
-                            break
-            except Exception as e:
-                print(f"Error: {e}")
-        else:
-            final_score=date_scoring(found_date, now, tag_score)
-            print(f"score if date: {final_score}")
-        
-        print(f"domain: {domain}\nscore before save: {final_score}")
-        formatted_item={"url":url, "domain":domain, "category":category, "site_rate":final_score, "date":found_date.strftime("%Y-%m-%d") if found_date else None}
-        output_res.append(formatted_item)
-        print("------------------------------------------------------------------------------------------------")
-    return output_res
-        
-def rank_list(items, query, config):
-    threshold=config.get("ranking_weights",{}).get("threshold", 1.2)
-    ignored=config.get("ignored_domains", [])
-    pre_filtered=[]
-    for item in items:
-        url=item.get("link", "").lower()
-        try:
-            domain=urlparse(url).netloc.lower()
-        except Exception:
-            domain=""
-        if any(black_domain in domain for black_domain in ignored):
-            continue
-        pre_filtered.append(item)
-    scored_items=score_calc(pre_filtered, query, config)
-    print(scored_items)
-    max_link=10
-    filtered_items=[item for item in scored_items if item["site_rate"] >= threshold]
-    filtered_items.sort(key=lambda x:x["site_rate"], reverse=True)
-    return filtered_items[:max_link]
-
-def get_site_rating(scored_sentences):
-    if not scored_sentences: return 0.0
-    print(scored_sentences)
-    all_grades=np.array([s['score'] for s in scored_sentences], dtype=np.float64)
-    print(all_grades)
-    sorted_grades=np.sort(all_grades)[::-1]
-    top_grades=sorted_grades[:5]
-    peak=top_grades.mean() if top_grades.size > 0 else 0.0
-    info_density=all_grades.mean() if all_grades.size > 0 else 0.0
-    comb_quality=(peak*0.7)+(info_density*0.3)
-    return comb_quality.item()
-
-async def vector_rating(query, text):
-    sentences=re.split(r'(?<=[.!?])+', text)
-    if not sentences: return 0.0, ""
-    q_resp=await AsyncClient().embed(model="nomic-embed-text", input=query)
-    q_emb=np.array(q_resp['embeddings'][0])
-    scored_sentences=[]
-    for s in sentences:
-        if len(s)<15:continue
-        try:
-            res=await AsyncClient().embed(model="nomic-embed-text", input=s)
-            s_emb=np.array(res['embeddings'][0])
-            score=np.dot(q_emb, s_emb)/(np.linalg.norm(q_emb)*np.linalg.norm(s_emb))
-            print(f"score: {score}; sentence: {s}")
-            scored_sentences.append({"score":score, "text":s})
-        except Exception as e:
-            print(f"sentence: {s} return error: {e}")
-            continue
-    avg_quality=get_site_rating(scored_sentences)
-    return avg_quality,scored_sentences
-
-def update_reputation(url, score, config, config_path):
-    domain=urlparse(url).netloc.lower().replace('www.', '')
-    if domain in config.get("official_domains", []):return
-    db=config.get("domain_reputation", {})
-    if domain not in db:
-        db[domain]={"category":"neutral", "history":[]}
-    history=db[domain]["history"]
-    history.append(score)
-    if len(history)>5: history.pop()
-    avg=sum(history)/len(history)
-    if avg>0.75: new_cat="pristine"
-    elif avg>0.60: new_cat="trusted"
-    elif avg>0.45: new_cat="community"
-    elif avg>0.30: new_cat="neutral"
-    else: new_cat="shady"
-    db[domain]["category"]=new_cat
-    saving(config_path, db, "domain_reputation", None)
-
-async def extract_relevant(content, query, config):
-    raw_text=[]
-    for item in content:
-        text=item.get("text", "").strip()
-        if len(text) > 100:
-            raw_text.append(text)
-    if not raw_text:
-        print("No DATA")
-        return ""
-    full_text="".join(raw_text)
-    raw_prompt=config.get("ai_prompt", "Extract relevant.")
-    try:
-        full_prompt=raw_prompt.format(query=query, text=full_text)
-    except KeyError as ke:
-        print(f"Key error or extract prompt error:{ke}")
-        full_prompt=f"{raw_prompt} Text: {full_text}"
-    try:
-        print(f"Extracting relevant information according to query: {query}, text len {len(full_text)}")
-        response=await AsyncClient().generate(model="qwen2.5:14b", prompt=full_prompt, options={"temperature":0.1, "num_cxt":32768})
-        result=response.get('response', '').strip()
-        return result
-    except Exception as e:
-        print(f"AI work error: {e}")
-        return ""
-
 async def agent_worker(name, item, query, session, config):
     special_sites=config.get("special_treatment", [])
     url=item.get("url", "")
@@ -394,30 +138,302 @@ async def run_agents(items, query, config):
         result=await asyncio.gather(*tasks)
         return [r for r in result if r]
 
-async def browser_answer(query, cmd=False):
-    config, config_path=browser_config()
-    raw_context=[]
-    links=await search(query, config)
-    print(links)
-    ranked=rank_list(links, query, config)
-    print(ranked)
-    if not ranked:
-        return "Search Error"
-    pages_data=await run_agents(ranked, query, config)
-    if not pages_data:
-        return "Cant get data from sites"
-    for item in pages_data:
-        domain=item["domain"]
-        text=item["text"]
-        print(f"send data to scoring: {text}\n-------------------------------------------------------------------------------------------------")
-        site_score, scored_text=await vector_rating(query, text)
-        #Return type: site_score=1.2; scored_text=[{"score":float value, "text":sentence}, {"score":float value, "text":sentence}.....(until the sentences in the text run out)]
-        update_reputation(domain, site_score, config, config_path)
-        tmp_data={"url":item["url"], "domain":domain, "text":text, "sentences":scored_text, "site_score":site_score, "data":item["data"], "category":item["category"]}
-        raw_context.append(tmp_data)
-    context=optimize_context(raw_context, config)
-    if cmd:
-        final_context=await extract_relevant(context, query, config)
+def set_query_date(query, date_now):
+    temp=search_dates(query, languages=["en"])
+    print(temp)
+    if temp == None:
+        return [date_now, False]
     else:
-        final_context=context
-    return final_context
+        return [temp[0][1].date(), True]
+
+async def analyze_query(original_query, date_now, time_now):
+    params={}
+    query_tokens={}
+    query_words_list=[]
+    detector=LanguageDetectorBuilder.from_all_languages().build()
+    lang=detector.detect_language_of(original_query)
+    if lang==Language.ENGLISH:
+        query_words_list=original_query.split()
+        query_len=len(query_words_list)
+        params={"original_text":original_query, "original_lang":lang, "need_translate":False, "translated_text":original_query, "query_len":query_len}
+    else:
+        model_answer=await AsyncClient().generate(model="index-translate-2b", prompt=f"Translate: {original_query}", think=False, stream=False, keep_alive=0)
+        translated_query=model_answer.get("response", "No answer from model")
+        query_words_list=translated_query.split()
+        query_len=len(query_words_list)
+        params={"original_text":original_query, "original_lang":lang, "need_translate":True, "translated_text":translated_query, "query_len":query_len}
+    if params.get("query_len", 0) == 1:
+        query_tokens={"query": params.get("translated_text", ""), "query_date": date_now, "query_time": time_now, "has_date_constraint": False, "tokens":[{"id":0, "text":query_words_list[0], "normalized":query_words_list[0].lower(), "flags":["kwd"], "weight":1.0}], "relation": None, "phrases": None}
+    query_date=set_query_date(params.get("translated_text", ""), date_now)
+    query_tokens={"query": params.get("translated_text", ""), "query_date": query_date[0], "query_time": time_now, "has_date_constraint": query_date[1], "tokens":[], "relation":[], "phrases":[]}
+    temp_list=[]
+    for i, word in enumerate(query_words_list):
+        temp_tuple={"id":i, "text":word, "normalized":word.lower(), "flags":[], "weight":0.0}
+        temp_list.append(temp_tuple)
+    query_tokens["tokens"]=temp_list
+    return params, query_tokens
+
+async def browser_answer(orig_query, cmd=False):
+    date_now, time_now=get_datetime()
+    config, config_path=browser_config()
+    query_params, tokens=await analyze_query(orig_query, date_now, time_now)
+    return query_params, tokens
+
+#def get_domain_category(url, config):
+    #domain=urlparse(url).netloc.lower().replace('www.', '')
+    #if domain in config.get("official_domains", []): return "official", 1.0
+    #reputation_db=config.get("domain_reputation", {})
+    #if domain in reputation_db:
+        #category=reputation_db[domain].get("category", "neutral")
+    #else: category="neutral"
+    #return category
+
+#def classify_url(url:str, config):
+    #for category, domains in config["sources"].items():
+        #for domain in domains:
+            #if domain in url:
+                #return category
+    #return "other"
+
+#def smart_trim(text, query, target_len):
+    #if len(text) <= target_len:
+        #return text
+    #sentences=re.split(r'(?<=[.!?])+', text)
+    #query_words=set(re.findall(r'\w{3,}',query.lower()))
+    #useful_sentences=[]
+    #for s in sentences:
+        #if any(word in s.lower() for word in query_words):
+            #useful_sentences.append(s)
+    #result=" ".join(useful_sentences)
+    #return result[:target_len] if result else text[:target_len]
+
+#def optimize_context(full_data, config):
+#Arguments type: scored_data=[{"url":url address, "domain":domain, "text":full text w/o split, "sentences":[{"score": float num; rating this sentences, "text":one sentence}, repetition acording to a pattern], "data":data, format:year-month-day, "category":domain category}, {repetition according to a pattern up to len equal max_links variable(default value equal 10)}]
+    # print(f"\n\nData to optimize: {full_data}")
+    # max_total=config.get("max_text_len", 30000)
+    # to_filter=full_data.copy()
+    # print(f"\n=======================================================================\ndata to optimize: {to_filter}")
+    # def clean_out(data_list):
+    #     cleaned=[]
+    #     for item in data_list:
+    #         new_item=item.copy()
+    #         new_item.pop("sentences", None)
+    #         cleaned.append(new_item)
+    #     print(f"\n\nCleaned data: {cleaned}")
+    #     return cleaned
+
+    # def optimization(treshold, count, data):
+    #     result=[]
+    #     start_indx=max(0, len(data)-count)
+    #     for i, item in enumerate(data):
+    #         current_item=item.copy
+    #         if i>=start_indx and "sentences" in current_item:
+    #             filtered=[]
+    #             for s in current_item['sentences']:
+    #                 if s.get("score", 0.0) >= treshold:
+    #                     filtered.append(s["text"])
+    #                 else:
+    #                     s.pop(s["text"])
+    #             current_item.pop("text", None)
+    #             current_item["text"]="".join(filtered)
+    #         result.append(current_item)
+    #     return result
+    
+    # steps=[(0.17, 0), (0.30,len(full_data)), (0.40, len(full_data)), (0.50, 7), (0.55, 5), (0.65, 3)]
+    # for treshold, count in steps:
+    #     current_len=sum(len(s['text']) for s in to_filter)
+    #     if current_len <= max_total:
+    #         return clean_out(to_filter)
+    #     else:
+    #         to_filter=optimization(treshold, count, to_filter)
+            
+    #for threshold, count in steps:
+        #print(f"\n\nTo big text, sended to cut: {total_len}")
+        #optimized_data=[]
+        #start_idx=max(0, len(scored_data) - count)
+        #for i, item in enumerate(scored_data):
+            #current_item=item.copy()
+            #if i>=start_idx and "sentences" in current_item:
+                #filtered=[s['text'] for s in current_item['sentences'] if float(s.get("score", 0.0)) >= threshold]
+                #current_item["text"]=" ".join(filtered)
+            #else:
+                #current_item["text"]=" ".join([s['text'] for s in current_item['sentences']])
+            #current_item.pop("sentences", None)
+            #optimized_data.append(current_item)
+        #current_len=sum(len(d['text']) for d in optimized_data)
+        #print(f"Current len: {current_len}")
+        #if current_len <= max_total:
+            #print(f"\n\nData after trim: {total_len} \n{optimized_data}")
+            #return optimized_data
+    
+# def score_calc(items, query, config):
+#     def date_scoring(found_date, now, tag_score):
+#         print("Date found")
+#         score=0.0
+#         days_diff=(now - found_date).days
+#         month_diff=(now.year - found_date.year)*12+now.month - found_date.month
+#         if found_date.year == now.year:
+#             score+=1.0
+#         else:
+#             years_diff=now.year - found_date.year
+#             score+=max(0, 1.0 - (years_diff*0.3/impact))
+#         if month_diff<12:
+#             month_bonus=max(0, 2.0 - (month_diff*0.15))
+#             score+=month_bonus*impact
+#         if days_diff<=30:
+#             day_bonus=max(0, 3.0 - (days_diff*0.15))
+#             score+=day_bonus*impact
+#         final_score=(tag_score+score)*impact
+#         print(f"score after date func: {final_score}")
+#         for spec_link in espec_links:
+#             if spec_link in url:
+#                 final_score*=weights.get("type_weights",{}).get("video", 0.6)
+#                 print(f"score if date and youtube: {final_score}")
+#                 break
+#         return final_score
+        
+#     weights=config.get("ranking_weights", {})
+#     espec_links=config.get("special_treatment",[])    
+#     query_words=set(re.findall(r'\w{3,}', query.lower()))
+#     now=datetime.now()
+#     output_res=[]
+#     for item in items:
+#         final_score=0.0
+#         url=item.get("link","").lower()
+#         title=item.get("title","").lower()
+#         snippet=item.get("snippet","").lower()
+#         try:
+#             domain=urlparse(url).netloc
+#         except Exception:
+#             domain=""
+#         category=get_domain_category(url, config)
+#         impact=config.get("trust_scores",{}).get(category, 0.5)
+#         matches=sum(1 for word in query_words if word in (title+" "+snippet))
+#         tag_score=matches*weights.get("tag_match_weight", 1.0)
+#         found_date=dateparser.parse(title+" "+snippet, settings={'RELATIVE_BASE':now, 'PREFER_DATES_FROM':'past'})
+#         print(f"domain: {domain}")
+#         print(f"cat: {category} and it impact: {impact}\ntag matches: {matches} and final tag score: {tag_score}\ndate: {found_date}")
+#         if not found_date:
+#             try:
+#                 print("Date not found")
+#                 from dateparser.search import search_dates
+#                 result=search_dates(title+" "+snippet, languages=['ru', 'en'])
+#                 if result:
+#                     found_date=result[0][1]
+#                     final_score=date_scoring(found_date, now, tag_score)
+#                     print(f"score if date: {final_score}")
+#                 else:
+#                     final_score+=(tag_score+1.5)*impact
+#                     print(f"score if not date: {final_score}")
+#                     for spec_link in espec_links:
+#                         if spec_link in url:
+#                             final_score*=weights.get("type_weights",{}).get("video", 0.6)
+#                             print(f"score if not date and youtube: {final_score}")
+#                             break
+#             except Exception as e:
+#                 print(f"Error: {e}")
+#         else:
+#             final_score=date_scoring(found_date, now, tag_score)
+#             print(f"score if date: {final_score}")
+        
+#         print(f"domain: {domain}\nscore before save: {final_score}")
+#         formatted_item={"url":url, "domain":domain, "category":category, "site_rate":final_score, "date":found_date.strftime("%Y-%m-%d") if found_date else None}
+#         output_res.append(formatted_item)
+#         print("------------------------------------------------------------------------------------------------")
+#     return output_res
+        
+# def rank_list(items, query, config):
+#     threshold=config.get("ranking_weights",{}).get("threshold", 1.2)
+#     ignored=config.get("ignored_domains", [])
+#     pre_filtered=[]
+#     for item in items:
+#         url=item.get("link", "").lower()
+#         try:
+#             domain=urlparse(url).netloc.lower()
+#         except Exception:
+#             domain=""
+#         if any(black_domain in domain for black_domain in ignored):
+#             continue
+#         pre_filtered.append(item)
+#     scored_items=score_calc(pre_filtered, query, config)
+#     print(scored_items)
+#     max_link=10
+#     filtered_items=[item for item in scored_items if item["site_rate"] >= threshold]
+#     filtered_items.sort(key=lambda x:x["site_rate"], reverse=True)
+#     return filtered_items[:max_link]
+
+# def get_site_rating(scored_sentences):
+#     if not scored_sentences: return 0.0
+#     print(scored_sentences)
+#     all_grades=np.array([s['score'] for s in scored_sentences], dtype=np.float64)
+#     print(all_grades)
+#     sorted_grades=np.sort(all_grades)[::-1]
+#     top_grades=sorted_grades[:5]
+#     peak=top_grades.mean() if top_grades.size > 0 else 0.0
+#     info_density=all_grades.mean() if all_grades.size > 0 else 0.0
+#     comb_quality=(peak*0.7)+(info_density*0.3)
+#     return comb_quality.item()
+
+# async def vector_rating(query, text):
+#     sentences=re.split(r'(?<=[.!?])+', text)
+#     if not sentences: return 0.0, ""
+#     q_resp=await AsyncClient().embed(model="nomic-embed-text", input=query)
+#     q_emb=np.array(q_resp['embeddings'][0])
+#     scored_sentences=[]
+#     for s in sentences:
+#         if len(s)<15:continue
+#         try:
+#             res=await AsyncClient().embed(model="nomic-embed-text", input=s)
+#             s_emb=np.array(res['embeddings'][0])
+#             score=np.dot(q_emb, s_emb)/(np.linalg.norm(q_emb)*np.linalg.norm(s_emb))
+#             print(f"score: {score}; sentence: {s}")
+#             scored_sentences.append({"score":score, "text":s})
+#         except Exception as e:
+#             print(f"sentence: {s} return error: {e}")
+#             continue
+#     avg_quality=get_site_rating(scored_sentences)
+#     return avg_quality,scored_sentences
+
+# def update_reputation(url, score, config, config_path):
+#     domain=urlparse(url).netloc.lower().replace('www.', '')
+#     if domain in config.get("official_domains", []):return
+#     db=config.get("domain_reputation", {})
+#     if domain not in db:
+#         db[domain]={"category":"neutral", "history":[]}
+#     history=db[domain]["history"]
+#     history.append(score)
+#     if len(history)>5: history.pop()
+#     avg=sum(history)/len(history)
+#     if avg>0.75: new_cat="pristine"
+#     elif avg>0.60: new_cat="trusted"
+#     elif avg>0.45: new_cat="community"
+#     elif avg>0.30: new_cat="neutral"
+#     else: new_cat="shady"
+#     db[domain]["category"]=new_cat
+#     saving(config_path, db, "domain_reputation", None)
+
+# async def extract_relevant(content, query, config):
+#     raw_text=[]
+#     for item in content:
+#         text=item.get("text", "").strip()
+#         if len(text) > 100:
+#             raw_text.append(text)
+#     if not raw_text:
+#         print("No DATA")
+#         return ""
+#     full_text="".join(raw_text)
+#     raw_prompt=config.get("ai_prompt", "Extract relevant.")
+#     try:
+#         full_prompt=raw_prompt.format(query=query, text=full_text)
+#     except KeyError as ke:
+#         print(f"Key error or extract prompt error:{ke}")
+#         full_prompt=f"{raw_prompt} Text: {full_text}"
+#     try:
+#         print(f"Extracting relevant information according to query: {query}, text len {len(full_text)}")
+#         response=await AsyncClient().generate(model="qwen2.5:14b", prompt=full_prompt, options={"temperature":0.1, "num_cxt":32768})
+#         result=response.get('response', '').strip()
+#         return result
+#     except Exception as e:
+#         print(f"AI work error: {e}")
+#         return ""
+
