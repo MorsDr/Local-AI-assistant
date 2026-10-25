@@ -1,0 +1,78 @@
+
+{
+  "version": 1,
+  "defaults": {
+    "detail": "balanced"
+  },
+  "image_types": {
+    "2d": {
+      "checkpoint": "dreamshaperXL_lightningDPMSDE.safetensors",
+      "styles": {
+        "anime": {
+          "loras": []
+        },
+        "western_cartoon": {
+          "loras": []
+        },
+        "painterly": {
+          "loras": []
+        },
+        "comic": {
+          "loras": []
+        },
+        "storybook": {
+          "loras": []
+        }
+      }
+    },
+    "3d": {
+      "checkpoint": "samaritan3dCartoon_v40SDXL.safetensors",
+      "styles": {
+        "cartoon_3d": {
+          "loras": []
+        },
+        "anime_3d": {
+          "loras": []
+        },
+        "realistic_cgi": {
+          "loras": []
+        },
+        "low_poly": {
+          "loras": []
+        },
+        "clay": {
+          "loras": []
+        }
+      }
+    },
+    "photorealism": {
+      "checkpoint": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+      "styles": {
+        "default": {
+          "loras": []
+        }
+      }
+    }
+  },
+  "nsfw_profiles": {
+    "adult_profile_a": {
+      "loras": [
+        {
+          "file": "REPLACE_WITH_LORA_A.safetensors",
+          "weight": 0.8
+        }
+      ]
+    },
+    "adult_profile_b": {
+      "loras": [
+        {
+          "file": "REPLACE_WITH_LORA_B.safetensors",
+          "weight": 0.7
+        }
+      ]
+    },
+    "adult_profile_c": {
+      "loras": []
+    }
+  }
+}

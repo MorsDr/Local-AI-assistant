@@ -1,0 +1,16 @@
+{
+  "description": "Blue protogen on white background",
+  "settings": {
+    "type": "2d",
+    "style": "anime",
+    "detail": "high",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "content": {
+    "nsfw": true,
+    "nsfw_type": "adult_profile_a"
+  }
+}

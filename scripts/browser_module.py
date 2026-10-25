@@ -15,6 +15,13 @@ from ddgs import DDGS
 from playwright.async_api import async_playwright
 from fake_useragent import UserAgent
 from lingua import Language, LanguageDetectorBuilder
+from wordfreq import zipf_frequency
+
+DETECTOR=LanguageDetectorBuilder.from_all_languages().build()
+TOKEN_RE=re.compile(r"\w+(?:[-']\w+)*")
+FWD_ZIPF=6.0
+YEAR_MIN=1990
+YEAR_AHEAD=10
 
 ua_generator=UserAgent(browsers=['chrome', 'edge'])
 def get_random_headers(config):
@@ -136,42 +143,109 @@ async def run_agents(items, query, config):
         for i, item in enumerate(items):
             tasks.append(agent_worker(f"worker_{i+1}", item, query, session, config))
         result=await asyncio.gather(*tasks)
-        return [r for r in result if r]
+        return [r for r in result if r]                             # порог частоты, подбирается на реальных запросах
 
-def set_query_date(query, date_now):
-    temp=search_dates(query, languages=["en"])
-    print(temp)
-    if temp == None:
-        return [date_now, False]
-    else:
-        return [temp[0][1].date(), True]
+def is_real_date(fragment, date_now):
+    frag=fragment.strip()
+    if frag.isdigit():
+        return YEAR_MIN <= int(frag) <= date_now.year + YEAR_AHEAD
+    return True
+
+def set_query_date(query, date_now, time_now):
+    found = search_dates(
+        query, languages=["en"],
+        settings={"RELATIVE_BASE": datetime.combine(date_now, time_now)},
+    ) or []
+    found=[(f, dt) for f, dt in found if is_real_date(f, date_now)]
+    if not found:
+        return date_now, False, []
+    fragments = [fragment for fragment, _ in found]   # тексты, которые распознаны как дата
+    return found[0][1].date(), True, [f for f, _ in found]
+
+
+def build_tokens(words, date_fragments):
+    # слова, которые "съела" дата: they получают флаг dat
+    date_words = set()
+    for fragment in date_fragments:
+        date_words.update(w.lower() for w in TOKEN_RE.findall(fragment))
+
+    tokens = []
+    for i, word in enumerate(words):
+        norm = word.lower()
+        flags = []
+        if norm in date_words:
+            flags.append("dat")
+        elif norm.isdigit():
+            flags.append("num")
+            if i > 0 and "nam" in tokens[i - 1]["flags"]:   # число сразу после названия
+                flags.append("nam")
+        elif any(c.isdigit() for c in norm) and any(c.isalpha() for c in norm):
+            flags.append("nam")                              # вроде GD78U43AA
+        elif zipf_frequency(norm, "en") >= FWD_ZIPF:
+            flags.append("fwd")                              # частотное служебное слово
+        tokens.append({"id": i, "text": word, "normalized": norm, "flags": flags, "weight": 0.0})
+    return tokens
+
 
 async def analyze_query(original_query, date_now, time_now):
-    params={}
-    query_tokens={}
-    query_words_list=[]
-    detector=LanguageDetectorBuilder.from_all_languages().build()
-    lang=detector.detect_language_of(original_query)
-    if lang==Language.ENGLISH:
-        query_words_list=original_query.split()
-        query_len=len(query_words_list)
-        params={"original_text":original_query, "original_lang":lang, "need_translate":False, "translated_text":original_query, "query_len":query_len}
-    else:
-        model_answer=await AsyncClient().generate(model="index-translate-2b", prompt=f"Translate: {original_query}", think=False, stream=False, keep_alive=0)
-        translated_query=model_answer.get("response", "No answer from model")
-        query_words_list=translated_query.split()
-        query_len=len(query_words_list)
-        params={"original_text":original_query, "original_lang":lang, "need_translate":True, "translated_text":translated_query, "query_len":query_len}
-    if params.get("query_len", 0) == 1:
-        query_tokens={"query": params.get("translated_text", ""), "query_date": date_now, "query_time": time_now, "has_date_constraint": False, "tokens":[{"id":0, "text":query_words_list[0], "normalized":query_words_list[0].lower(), "flags":["kwd"], "weight":1.0}], "relation": None, "phrases": None}
-    query_date=set_query_date(params.get("translated_text", ""), date_now)
-    query_tokens={"query": params.get("translated_text", ""), "query_date": query_date[0], "query_time": time_now, "has_date_constraint": query_date[1], "tokens":[], "relation":[], "phrases":[]}
-    temp_list=[]
-    for i, word in enumerate(query_words_list):
-        temp_tuple={"id":i, "text":word, "normalized":word.lower(), "flags":[], "weight":0.0}
-        temp_list.append(temp_tuple)
-    query_tokens["tokens"]=temp_list
+    lang = DETECTOR.detect_language_of(original_query)
+    need_translate = lang != Language.ENGLISH      # None (не определился) тоже идёт на перевод
+    text = original_query
+    if need_translate:
+        answer = await AsyncClient().generate(
+            model="index-translate-2b", prompt=f"Translate: {original_query}",
+            think=False, stream=False, keep_alive=0,
+        )
+        text = (answer.get("response") or "").strip() or original_query   # при сбое остаётся оригинал
+
+    words = TOKEN_RE.findall(text)
+    params = {"original_text": original_query, "original_lang": lang, "need_translate": need_translate,
+              "translated_text": text, "query_len": len(words)}
+
+    query_date, has_date, fragments = set_query_date(text, date_now, time_now)
+    tokens = build_tokens(words, fragments)
+
+    if len(tokens) == 1 and not tokens[0]["flags"]:   # запрос из одного слова
+        tokens[0]["flags"] = ["kwd"]
+        tokens[0]["weight"] = 1.0
+
+    query_tokens = {"query": text, "query_date": query_date, "query_time": time_now,
+                    "has_date_constraint": has_date, "tokens": tokens, "relations": [], "phrases": []}
     return params, query_tokens
+# def set_query_date(query, date_now):
+#     temp=search_dates(query, languages=["en"])
+#     print(temp)
+#     if temp == None:
+#         return [date_now, False]
+#     else:
+#         return [temp[0][1].date(), True]
+
+# async def analyze_query(original_query, date_now, time_now):
+#     params={}
+#     query_tokens={}
+#     query_words_list=[]
+#     detector=LanguageDetectorBuilder.from_all_languages().build()
+#     lang=detector.detect_language_of(original_query)
+#     if lang==Language.ENGLISH:
+#         query_words_list=original_query.split()
+#         query_len=len(query_words_list)
+#         params={"original_text":original_query, "original_lang":lang, "need_translate":False, "translated_text":original_query, "query_len":query_len}
+#     else:
+#         model_answer=await AsyncClient().generate(model="index-translate-2b", prompt=f"Translate: {original_query}", think=False, stream=False, keep_alive=0)
+#         translated_query=model_answer.get("response", "No answer from model")
+#         query_words_list=translated_query.split()
+#         query_len=len(query_words_list)
+#         params={"original_text":original_query, "original_lang":lang, "need_translate":True, "translated_text":translated_query, "query_len":query_len}
+#     if params.get("query_len", 0) == 1:
+#         query_tokens={"query": params.get("translated_text", ""), "query_date": date_now, "query_time": time_now, "has_date_constraint": False, "tokens":[{"id":0, "text":query_words_list[0], "normalized":query_words_list[0].lower(), "flags":["kwd"], "weight":1.0}], "relation": None, "phrases": None}
+#     query_date=set_query_date(params.get("translated_text", ""), date_now)
+#     query_tokens={"query": params.get("translated_text", ""), "query_date": query_date[0], "query_time": time_now, "has_date_constraint": query_date[1], "tokens":[], "relation":[], "phrases":[]}
+#     temp_list=[]
+#     for i, word in enumerate(query_words_list):
+#         temp_tuple={"id":i, "text":word, "normalized":word.lower(), "flags":[], "weight":0.0}
+#         temp_list.append(temp_tuple)
+#     query_tokens["tokens"]=temp_list
+#     return params, query_tokens
 
 async def browser_answer(orig_query, cmd=False):
     date_now, time_now=get_datetime()
