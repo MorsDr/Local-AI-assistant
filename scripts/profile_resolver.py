@@ -1,10 +1,11 @@
-
 import json
 from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 PROFILE_FILE = BASE_DIR / "configs" / "comfy_profiles.json"
+
+VALID_DETAILS = {"simple", "balanced", "high"}
 
 
 class ProfileError(ValueError):
@@ -13,17 +14,18 @@ class ProfileError(ValueError):
 
 def load_profiles() -> dict:
     if not PROFILE_FILE.is_file():
-        raise ProfileError(
-            f"Profile catalog not found: {PROFILE_FILE}"
-        )
+        raise ProfileError(f"Profile catalog not found: {PROFILE_FILE}")
 
     try:
         with PROFILE_FILE.open("r", encoding="utf-8") as file:
-            return json.load(file)
+            catalog = json.load(file)
     except json.JSONDecodeError as error:
-        raise ProfileError(
-            f"Invalid profile JSON: {error}"
-        ) from error
+        raise ProfileError(f"Invalid profile JSON: {error}") from error
+
+    if not isinstance(catalog, dict):
+        raise ProfileError("Profile catalog must be a JSON object.")
+
+    return catalog
 
 
 def resolve_profile(request: dict) -> dict:
@@ -36,22 +38,32 @@ def resolve_profile(request: dict) -> dict:
 
         image_type = settings["type"]
         style = settings["style"]
-        detail = settings["detail"]
+        detail = settings.get(
+            "detail",
+            catalog.get("defaults", {}).get("detail", "balanced"),
+        )
         resolution = settings["resolution"]
 
         nsfw = content["nsfw"]
         nsfw_type = content["nsfw_type"]
-    except (KeyError, TypeError) as error:
+    except (KeyError, TypeError, AttributeError) as error:
         raise ProfileError(
             f"Request is missing a required field: {error}"
         ) from error
 
-    if image_type not in catalog["image_types"]:
+    if not isinstance(settings, dict) or not isinstance(content, dict):
+        raise ProfileError("'settings' and 'content' must be objects.")
+
+    if not isinstance(image_type, str):
+        raise ProfileError("Image type must be a string.")
+
+    image_types = catalog.get("image_types", {})
+    if image_type not in image_types:
         raise ProfileError(
             f"No model configuration for type '{image_type}'."
         )
 
-    type_profile = catalog["image_types"][image_type]
+    type_profile = image_types[image_type]
     styles = type_profile.get("styles", {})
 
     if style not in styles:
@@ -59,16 +71,26 @@ def resolve_profile(request: dict) -> dict:
             f"No style profile '{style}' for '{image_type}'."
         )
 
-    checkpoint = type_profile.get("checkpoint")
+    if detail not in VALID_DETAILS:
+        raise ProfileError(
+            f"Invalid detail '{detail}'. Expected one of: "
+            f"{', '.join(sorted(VALID_DETAILS))}."
+        )
 
-    if not checkpoint or checkpoint.startswith("REPLACE_WITH_"):
+    if not isinstance(nsfw, bool):
+        raise ProfileError("'content.nsfw' must be true or false.")
+
+    checkpoint = type_profile.get("checkpoint")
+    if (
+        not isinstance(checkpoint, str)
+        or not checkpoint
+        or checkpoint.startswith("REPLACE_WITH_")
+    ):
         raise ProfileError(
             f"Checkpoint for '{image_type}' has not been configured."
         )
 
-    style_loras = styles[style].get("loras", [])
-
-    selected_loras = list(style_loras)
+    selected_loras = list(styles[style].get("loras", []))
 
     if nsfw:
         if not nsfw_type:
@@ -77,19 +99,22 @@ def resolve_profile(request: dict) -> dict:
             )
 
         nsfw_profiles = catalog.get("nsfw_profiles", {})
-
         if nsfw_type not in nsfw_profiles:
-            raise ProfileError(
-                f"Unknown NSFW profile '{nsfw_type}'."
-            )
+            raise ProfileError(f"Unknown NSFW profile '{nsfw_type}'.")
 
         nsfw_loras = nsfw_profiles[nsfw_type].get("loras", [])
-
         selected_loras.extend(nsfw_loras)
     elif nsfw_type is not None:
         raise ProfileError(
             "NSFW profile supplied while NSFW is disabled."
         )
+
+    for lora in selected_loras:
+        filename = lora.get("file", "")
+        if not filename or filename.startswith("REPLACE_WITH_"):
+            raise ProfileError(
+                f"LoRA profile contains an unconfigured file: {filename}"
+            )
 
     return {
         "checkpoint": checkpoint,
@@ -98,8 +123,8 @@ def resolve_profile(request: dict) -> dict:
         "resolution": resolution,
         "content": {
             "nsfw": nsfw,
-            "nsfw_type": nsfw_type
-        }
+            "nsfw_type": nsfw_type,
+        },
     }
 
 
@@ -112,7 +137,7 @@ def main():
     )
     parser.add_argument(
         "request_json",
-        help="Path to the JSON file produced by request_parser.py."
+        help="Path to the JSON file produced by request_parser.py.",
     )
     args = parser.parse_args()
 
@@ -121,7 +146,6 @@ def main():
             request = json.load(file)
 
         result = resolve_profile(request)
-
         json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
         print()
 
