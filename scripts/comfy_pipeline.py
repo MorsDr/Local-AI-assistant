@@ -1,12 +1,30 @@
-
 import argparse
 import json
 import sys
 
+from comfy_manager import ensure_running, touch
+from comfyui_client import generate_image
 from request_parser import build_request
 from profile_resolver import resolve_profile
 from prompt_generator import generate_prompts, PromptGenerationError
 
+def to_workflow_config(profile: dict, prompts: dict) -> dict:
+    """Translate resolver/prompt output into the ComfyUI client format."""
+    loras = []
+    for lora in profile["loras"]:
+        item = {"name": lora["file"]}
+        if "weight" in lora:
+            item["strength_model"] = lora["weight"]
+            item["strength_clip"] = lora.get("weight_clip", lora["weight"])
+        loras.append(item)
+
+    return {
+        "checkpoint": profile["checkpoint"],
+        "resolution": profile["resolution"],
+        "loras": loras,
+        "positive_prompt": prompts["positive_prompt"],
+        "negative_prompt": prompts["negative_prompt"],
+    }
 
 def run_pipeline(args: argparse.Namespace) -> dict:
     """Parse request, resolve profile, and generate prompts."""
@@ -19,12 +37,22 @@ def run_pipeline(args: argparse.Namespace) -> dict:
 
     # 3. Generate positive and negative prompts from the description.
     prompts = generate_prompts(request["description"])
-
-    # 4. Combine everything into one result.
-    return {
+        # 4. Combine everything into one result.
+    result = {
         **profile,
         **prompts,
     }
+
+    # 5. Send the request to ComfyUI unless this is a dry run.
+    if not args.dry_run:
+        ensure_running()
+        result["generation"] = generate_image(
+            to_workflow_config(profile, prompts)
+        )
+        free_memory()
+        touch()
+
+    return result
 
 
 def main() -> int:
@@ -51,6 +79,7 @@ def main() -> int:
         choices=["adult_profile_a", "adult_profile_b", "adult_profile_c"],
         default=None,
     )
+    parser.add_argument("--dry-run", action="store_true", help="Only prepare prompts and settings, do not call ComfyUI.")
 
     args = parser.parse_args()
 

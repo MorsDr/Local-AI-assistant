@@ -3,6 +3,8 @@ import psutil
 import platform
 import subprocess
 import json
+from glob import glob
+from pathlib import path
 
 def get_base_env():
     info={
@@ -133,4 +135,79 @@ def get_hardware_specs():
         specs["GPU"]=get_gpu_info(env)
         specs["CPU"]=get_cpu_info(env)
     return env,specs,docker_res
+
+def _cgroup_memory():
+    """Return (limit, used) in bytes for this cgroup, or (None, None)."""
+    candidates = (
+        ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+        ("/sys/fs/cgroup/memory/memory.limit_in_bytes",
+         "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+    )
+    for limit_path, used_path in candidates:
+        try:
+            raw = Path(limit_path).read_text().strip()
+            used = int(Path(used_path).read_text().strip())
+        except (OSError, ValueError):
+            continue
+        if raw == "max" or int(raw) >= 1 << 60:
+            return None, None  # no real limit
+        return int(raw), used
+    return None, None
+
+
+def _vram_amdgpu():
+    """(total, free) of the AMD GPU with the most VRAM, or None."""
+    best = None
+    for device in glob("/sys/class/drm/card?/device"):
+        try:
+            total = int(Path(device, "mem_info_vram_total").read_text())
+            used = int(Path(device, "mem_info_vram_used").read_text())
+        except (OSError, ValueError):
+            continue
+        if best is None or total > best[0]:
+            best = (total, total - used)
+    return best
+
+
+def _vram_nvidia():
+    """(total, free) of the NVIDIA GPU with the most VRAM, or None."""
+    try:
+        output = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.total,memory.free",
+             "--format=csv,noheader,nounits"],
+            timeout=5, text=True,
+        )
+        rows = [
+            tuple(int(x) * 1024**2 for x in line.split(","))
+            for line in output.strip().splitlines()
+        ]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    return max(rows) if rows else None
+
+
+def get_memory_status() -> dict:
+    """Live memory numbers in bytes; None where they cannot be read."""
+    ram = psutil.virtual_memory()
+    total, available = ram.total, ram.available
+
+    limit, used = _cgroup_memory()
+    if limit is not None:  # inside a container with a memory limit
+        total = min(total, limit)
+        available = min(available, max(limit - used, 0))
+
+    source = "amdgpu-sysfs"
+    vram = _vram_amdgpu()
+    if vram is None:
+        source, vram = "nvidia-smi", _vram_nvidia()
+    if vram is None:
+        source = None
+
+    return {
+        "ram_total": total,
+        "ram_available": available,
+        "vram_total": vram[0] if vram else None,
+        "vram_free": vram[1] if vram else None,
+        "gpu_source": source,
+    }
 

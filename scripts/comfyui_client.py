@@ -32,7 +32,7 @@ def _post_json(endpoint: str, payload: dict) -> dict:
 
 
 def build_workflow(config: dict) -> dict:
-    """Build a basic SDXL text-to-image workflow."""
+    """Build an SDXL text-to-image workflow with optional LoRA support."""
 
     required = (
         "checkpoint",
@@ -48,28 +48,23 @@ def build_workflow(config: dict) -> dict:
     width = resolution["width"]
     height = resolution["height"]
 
-    if not all(isinstance(v, int) and v > 0 for v in (width, height)):
-        raise ValueError("Resolution width and height must be positive integers.")
+    if not all(
+        isinstance(v, int) and not isinstance(v, bool) and v > 0
+        for v in (width, height)
+    ):
+        raise ValueError(
+            "Resolution width and height must be positive integers."
+        )
 
-    return {
+    loras = config.get("loras", [])
+    if not isinstance(loras, list):
+        raise ValueError("'loras' must be a list.")
+
+    workflow = {
         "1": {
             "class_type": "CheckpointLoaderSimple",
             "inputs": {
                 "ckpt_name": config["checkpoint"],
-            },
-        },
-        "2": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": config["positive_prompt"],
-                "clip": ["1", 1],
-            },
-        },
-        "3": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "text": config["negative_prompt"],
-                "clip": ["1", 1],
             },
         },
         "4": {
@@ -89,9 +84,8 @@ def build_workflow(config: dict) -> dict:
                 "sampler_name": "euler",
                 "scheduler": "normal",
                 "denoise": 1.0,
-                "model": ["1", 0],
-                "positive": ["2", 0],
-                "negative": ["3", 0],
+                "positive": None,
+                "negative": None,
                 "latent_image": ["4", 0],
             },
         },
@@ -110,6 +104,151 @@ def build_workflow(config: dict) -> dict:
             },
         },
     }
+
+    model_ref = ["1", 0]
+    clip_ref = ["1", 1]
+
+    for index, lora in enumerate(loras):
+        if not isinstance(lora, dict):
+            raise ValueError(f"LoRA entry {index} must be a dictionary.")
+
+        name = lora.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"LoRA entry {index} must have a valid 'name'.")
+
+        strength_model = lora.get("strength_model", 0.8)
+        strength_clip = lora.get("strength_clip", 0.7)
+
+        for field, strength in (
+            ("strength_model", strength_model),
+            ("strength_clip", strength_clip),
+        ):
+            if (
+                isinstance(strength, bool)
+                or not isinstance(strength, (int, float))
+                or not -10 <= strength <= 10
+            ):
+                raise ValueError(
+                    f"LoRA '{name}': {field} must be a number between -10 and 10."
+                )
+
+        node_id = str(10 + index)
+        workflow[node_id] = {
+            "class_type": "LoraLoader",
+            "inputs": {
+                "lora_name": name,
+                "strength_model": strength_model,
+                "strength_clip": strength_clip,
+                "model": model_ref,
+                "clip": clip_ref,
+            },
+        }
+
+        model_ref = [node_id, 0]
+        clip_ref = [node_id, 1]
+
+    workflow["2"] = {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+            "text": config["positive_prompt"],
+            "clip": clip_ref,
+        },
+    }
+
+    workflow["3"] = {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+            "text": config["negative_prompt"],
+            "clip": clip_ref,
+        },
+    }
+
+    workflow["5"]["inputs"]["model"] = model_ref
+    workflow["5"]["inputs"]["positive"] = ["2", 0]
+    workflow["5"]["inputs"]["negative"] = ["3", 0]
+
+    return workflow
+
+
+# def build_workflow(config: dict) -> dict:
+#     """Build a basic SDXL text-to-image workflow."""
+
+#     required = (
+#         "checkpoint",
+#         "positive_prompt",
+#         "negative_prompt",
+#         "resolution",
+#     )
+#     missing = [key for key in required if key not in config]
+#     if missing:
+#         raise ValueError(f"Missing config fields: {', '.join(missing)}")
+
+#     resolution = config["resolution"]
+#     width = resolution["width"]
+#     height = resolution["height"]
+
+#     if not all(isinstance(v, int) and v > 0 for v in (width, height)):
+#         raise ValueError("Resolution width and height must be positive integers.")
+
+#     return {
+#         "1": {
+#             "class_type": "CheckpointLoaderSimple",
+#             "inputs": {
+#                 "ckpt_name": config["checkpoint"],
+#             },
+#         },
+#         "2": {
+#             "class_type": "CLIPTextEncode",
+#             "inputs": {
+#                 "text": config["positive_prompt"],
+#                 "clip": ["1", 1],
+#             },
+#         },
+#         "3": {
+#             "class_type": "CLIPTextEncode",
+#             "inputs": {
+#                 "text": config["negative_prompt"],
+#                 "clip": ["1", 1],
+#             },
+#         },
+#         "4": {
+#             "class_type": "EmptyLatentImage",
+#             "inputs": {
+#                 "width": width,
+#                 "height": height,
+#                 "batch_size": 1,
+#             },
+#         },
+#         "5": {
+#             "class_type": "KSampler",
+#             "inputs": {
+#                 "seed": int(time.time_ns() % (2**32)),
+#                 "steps": 25,
+#                 "cfg": 7.0,
+#                 "sampler_name": "euler",
+#                 "scheduler": "normal",
+#                 "denoise": 1.0,
+#                 "model": ["1", 0],
+#                 "positive": ["2", 0],
+#                 "negative": ["3", 0],
+#                 "latent_image": ["4", 0],
+#             },
+#         },
+#         "6": {
+#             "class_type": "VAEDecode",
+#             "inputs": {
+#                 "samples": ["5", 0],
+#                 "vae": ["1", 2],
+#             },
+#         },
+#         "7": {
+#             "class_type": "SaveImage",
+#             "inputs": {
+#                 "filename_prefix": "ai_helper",
+#                 "images": ["6", 0],
+#             },
+#         },
+#     }
 
 
 def generate_image(config: dict, timeout: int = 600) -> dict:
